@@ -51,18 +51,22 @@ export function mergeInheritedPorts(
 }
 
 export function toFlowNodes(nodes: DiagramNode[]): Node[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    type: node.type,
-    position: node.position,
-    parentId: node.parentId,
-    extent: node.parentId ? "parent" : node.extent,
-    style: node.width || node.height ? { width: node.width, height: node.height } : undefined,
-    data: node.data as unknown as Record<string, unknown>,
-    width: node.width,
-    height: node.height,
-    zIndex: node.type === "group" ? -1 : undefined,
-  }));
+  const mapped = nodes.map((node) => {
+    const isGroup = node.type === "group";
+    return {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      parentId: node.parentId,
+      extent: node.parentId ? ("parent" as const) : node.extent,
+      style: isGroup && (node.width || node.height) ? { width: node.width, height: node.height } : undefined,
+      data: node.data as unknown as Record<string, unknown>,
+      width: isGroup ? node.width : undefined,
+      height: isGroup ? node.height : undefined,
+      zIndex: isGroup ? -1 : undefined,
+    };
+  });
+  return sortParentsFirst(mapped);
 }
 
 export function toFlowEdges(edges: DiagramEdge[]): Edge[] {
@@ -93,14 +97,17 @@ export function fromFlowNode(node: {
   style?: { width?: number | string; height?: number | string };
   measured?: { width?: number; height?: number };
 }): DiagramNode {
-  const width =
-    node.width ??
-    (typeof node.style?.width === "number" ? node.style.width : undefined) ??
-    node.measured?.width;
-  const height =
-    node.height ??
-    (typeof node.style?.height === "number" ? node.style.height : undefined) ??
-    node.measured?.height;
+  const isGroup = node.type === "group";
+  const width = isGroup
+    ? (node.width ??
+      (typeof node.style?.width === "number" ? node.style.width : undefined) ??
+      node.measured?.width)
+    : undefined;
+  const height = isGroup
+    ? (node.height ??
+      (typeof node.style?.height === "number" ? node.style.height : undefined) ??
+      node.measured?.height)
+    : undefined;
   return {
     id: node.id,
     type: (node.type as DiagramNode["type"]) ?? "infra",
@@ -111,6 +118,22 @@ export function fromFlowNode(node: {
     height,
     data: node.data as DiagramNode["data"],
   };
+}
+
+function sortParentsFirst<T extends { id: string; parentId?: string | null }>(nodes: T[]): T[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const depth = (node: T) => {
+    let value = 0;
+    let parentId = node.parentId ?? undefined;
+    const seen = new Set<string>();
+    while (parentId && byId.has(parentId) && !seen.has(parentId)) {
+      seen.add(parentId);
+      value += 1;
+      parentId = byId.get(parentId)?.parentId ?? undefined;
+    }
+    return value;
+  };
+  return [...nodes].sort((a, b) => depth(a) - depth(b));
 }
 
 function nodeSize(node: Node) {
@@ -196,20 +219,25 @@ export function groupSelectedNodes(nodes: Node[]): Node[] | null {
     },
   };
 
-  return withGroupCounts([
-    group,
-    ...nodes.map((node) => {
-      if (!wrapIds.has(node.id)) return { ...node, selected: false };
-      const abs = absolutePosition(node, byId);
-      return {
-        ...node,
-        parentId: groupId,
-        extent: "parent" as const,
-        position: { x: abs.x - minX, y: abs.y - minY },
-        selected: false,
-      };
-    }),
-  ]);
+  return sortParentsFirst(
+    withGroupCounts([
+      group,
+      ...nodes.map((node) => {
+        if (!wrapIds.has(node.id)) return { ...node, selected: false };
+        const abs = absolutePosition(node, byId);
+        return {
+          ...node,
+          parentId: groupId,
+          extent: "parent" as const,
+          position: { x: abs.x - minX, y: abs.y - minY },
+          selected: false,
+          width: undefined,
+          height: undefined,
+          style: undefined,
+        };
+      }),
+    ]),
+  );
 }
 
 export function ungroupNode(nodes: Node[], groupId: string): Node[] {
@@ -220,22 +248,27 @@ export function ungroupNode(nodes: Node[], groupId: string): Node[] {
   const nextParent = group.parentId;
   const parentAbs = nextParent && byId.get(nextParent) ? absolutePosition(byId.get(nextParent)!, byId) : { x: 0, y: 0 };
 
-  return withGroupCounts(
-    nodes
-      .filter((node) => node.id !== groupId)
-      .map((node) => {
-        if (node.parentId !== groupId) return node;
-        return {
-          ...node,
-          parentId: nextParent,
-          extent: nextParent ? ("parent" as const) : undefined,
-          position: {
-            x: groupAbs.x + node.position.x - parentAbs.x,
-            y: groupAbs.y + node.position.y - parentAbs.y,
-          },
-          selected: true,
-        };
-      }),
+  return sortParentsFirst(
+    withGroupCounts(
+      nodes
+        .filter((node) => node.id !== groupId)
+        .map((node) => {
+          if (node.parentId !== groupId) return node;
+          return {
+            ...node,
+            parentId: nextParent,
+            extent: nextParent ? ("parent" as const) : undefined,
+            position: {
+              x: groupAbs.x + node.position.x - parentAbs.x,
+              y: groupAbs.y + node.position.y - parentAbs.y,
+            },
+            selected: true,
+            width: undefined,
+            height: undefined,
+            style: undefined,
+          };
+        }),
+    ),
   );
 }
 
@@ -252,25 +285,72 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
   }
   const abs = absolutePosition(node, byId);
   if (!groupId) {
-    return withGroupCounts(
-      nodes.map((item) =>
-        item.id === nodeId ? { ...item, parentId: undefined, extent: undefined, position: abs } : item,
+    return sortParentsFirst(
+      withGroupCounts(
+        nodes.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                parentId: undefined,
+                extent: undefined,
+                position: abs,
+                width: undefined,
+                height: undefined,
+                style: undefined,
+              }
+            : item,
+        ),
       ),
     );
   }
   const group = byId.get(groupId);
   if (!group) return nodes;
   const groupAbs = absolutePosition(group, byId);
-  return withGroupCounts(
-    nodes.map((item) =>
-      item.id === nodeId
-        ? {
+  const size = nodeSize(node);
+  const paddingX = 24;
+  const paddingTop = 48;
+  const paddingBottom = 24;
+  let relX = abs.x - groupAbs.x;
+  let relY = abs.y - groupAbs.y;
+  const groupSize = nodeSize(group);
+  const needW = Math.max(groupSize.width, relX + size.width + paddingX);
+  const needH = Math.max(groupSize.height, relY + size.height + paddingBottom);
+  const shiftX = relX < paddingX ? paddingX - relX : 0;
+  const shiftY = relY < paddingTop ? paddingTop - relY : 0;
+  relX += shiftX;
+  relY += shiftY;
+
+  return sortParentsFirst(
+    withGroupCounts(
+      nodes.map((item) => {
+        if (item.id === groupId) {
+          return {
+            ...item,
+            position: { x: group.position.x - shiftX, y: group.position.y - shiftY },
+            width: needW + shiftX,
+            height: needH + shiftY,
+            style: { width: needW + shiftX, height: needH + shiftY },
+          };
+        }
+        if (item.id === nodeId) {
+          return {
             ...item,
             parentId: groupId,
             extent: "parent" as const,
-            position: { x: abs.x - groupAbs.x, y: abs.y - groupAbs.y },
-          }
-        : item,
+            position: { x: relX, y: relY },
+            width: undefined,
+            height: undefined,
+            style: undefined,
+          };
+        }
+        if (item.parentId === groupId && (shiftX || shiftY)) {
+          return {
+            ...item,
+            position: { x: item.position.x + shiftX, y: item.position.y + shiftY },
+          };
+        }
+        return item;
+      }),
     ),
   );
 }

@@ -264,6 +264,14 @@ function InfraDetails({
         </select>
       </Field>
 
+      <MarkdownField
+        label="Description"
+        readOnly={readOnly}
+        value={data.description ?? ""}
+        placeholder={"Authentication service.\n\n- Validates sessions\n- Issues **JWT** tokens"}
+        onChange={(description) => patch({ description })}
+      />
+
       <div className="mt-4 rounded-xl border border-[#2a2a2e] bg-[#121214] p-3">
         <div className="mb-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">Appearance</div>
         <Field label="Shape">
@@ -362,14 +370,6 @@ function InfraDetails({
           ))}
         </select>
       </Field>
-
-      <MarkdownField
-        label="Description"
-        readOnly={readOnly}
-        value={data.description ?? ""}
-        placeholder={"Authentication service.\n\n- Validates sessions\n- Issues **JWT** tokens"}
-        onChange={(description) => patch({ description })}
-      />
 
       <div className="mt-4">
         <Label>Technologies</Label>

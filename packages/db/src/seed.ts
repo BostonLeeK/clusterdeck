@@ -75,7 +75,7 @@ const prodSnapshot: DiagramSnapshot = {
       description: "Authentication service. Validates user sessions and issues access tokens.",
       properties: [
         { key: "Owner", value: "Team Core" },
-        { key: "Repo", value: "github.com/promsvitlo/auth" },
+        { key: "Repo", value: "github.com/dev/auth" },
         { key: "Port", value: "8080" },
         { key: "Environment", value: "prod" },
       ],
@@ -193,7 +193,7 @@ const authInner: DiagramSnapshot = {
 };
 
 async function main() {
-  const email = "bohdan@promsvitlo.dev";
+  const email = "bohdan@dev";
   const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (existing[0]) {
     console.log("seed already applied");
@@ -218,7 +218,7 @@ async function main() {
     .returning();
   if (!user) throw new Error("failed to insert user");
 
-  const [workspace] = await db.insert(workspaces).values({ name: "Promsvitlo Team" }).returning();
+  const [workspace] = await db.insert(workspaces).values({ name: "Dev Team" }).returning();
   if (!workspace) throw new Error("failed to insert workspace");
 
   await db.insert(workspaceMembers).values({

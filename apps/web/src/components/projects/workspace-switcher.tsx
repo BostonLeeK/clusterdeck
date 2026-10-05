@@ -61,7 +61,7 @@ export function WorkspaceSwitcher({
           >
             <div className="space-y-1">
               <Label htmlFor="workspace-name">Team name</Label>
-              <Input id="workspace-name" name="name" required placeholder="Promsvitlo Team" />
+              <Input id="workspace-name" name="name" required placeholder="Dev Team" />
             </div>
             {error ? <p className="text-sm text-red-400">{error}</p> : null}
             <Button type="submit" className="w-full">

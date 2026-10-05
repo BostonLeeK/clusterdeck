@@ -19,7 +19,7 @@ export function MarkdownField({
   readOnly: boolean;
   placeholder?: string;
 }) {
-  const [tab, setTab] = useState<"write" | "preview">(readOnly ? "preview" : "write");
+  const [tab, setTab] = useState<"write" | "preview">("preview");
 
   return (
     <div className="mt-3 space-y-1.5">

@@ -5,14 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
   type Node,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 import {
   ArrowLeft,
   Hand,
@@ -552,8 +550,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 zoomable
                 position="bottom-right"
                 style={{ marginRight: 12, marginBottom: 48 }}
+                maskColor="rgba(0, 0, 0, 0.6)"
+                nodeStrokeColor="#3f3f46"
+                nodeColor="#27272a"
+                nodeStrokeWidth={1}
               />
-              <Controls showInteractive={false} />
             </ReactFlow>
           </DiagramPerspectiveProvider>
           <PerspectiveBar

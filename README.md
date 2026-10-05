@@ -24,7 +24,7 @@ Services:
 | Realtime  | ws://localhost:1234     |
 | Postgres  | localhost:5432          |
 
-Seed login: `bohdan@promsvitlo.dev` / `password123`
+Seed login: `bohdan@dev` / `password123`
 
 Useful commands:
 
