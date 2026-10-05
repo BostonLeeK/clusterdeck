@@ -7,6 +7,7 @@ import { createProject } from "@/actions/projects";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Modal, ModalContent, ModalTrigger } from "@/components/ui/modal";
+import { FormSelect } from "@/components/ui/select";
 
 export function CreateProjectButton({
   workspaceId,
@@ -62,29 +63,24 @@ export function CreateProjectButton({
           </div>
           <div className="space-y-1">
             <Label htmlFor="template">Template</Label>
-            <select
+            <FormSelect
               id="template"
               name="template"
               defaultValue={defaultTemplate}
-              className="h-9 w-full rounded-lg border border-border bg-zinc-950/60 px-3 text-sm"
-            >
-              {PROJECT_TEMPLATES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              options={PROJECT_TEMPLATES.map((item) => ({ value: item.id, label: item.name }))}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="kind">Visibility</Label>
-            <select
+            <FormSelect
               id="kind"
               name="kind"
-              className="h-9 w-full rounded-lg border border-border bg-zinc-950/60 px-3 text-sm"
-            >
-              <option value="personal">Personal</option>
-              <option value="shared">Shared</option>
-            </select>
+              defaultValue="personal"
+              options={[
+                { value: "personal", label: "Personal" },
+                { value: "shared", label: "Shared" },
+              ]}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="tags">Tags</Label>

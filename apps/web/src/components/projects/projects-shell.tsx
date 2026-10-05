@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Modal, ModalContent } from "@/components/ui/modal";
+import { FormSelect } from "@/components/ui/select";
 import { timeAgo } from "@/lib/utils";
 import { PROJECT_TEMPLATES, type DiagramSnapshot } from "@dataflow/shared";
 
@@ -228,14 +229,16 @@ export function ProjectsShell({
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <select
-                className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-zinc-300"
+              <FormSelect
+                size="sm"
+                className="w-[140px] border-border bg-card text-zinc-300"
                 defaultValue={params.get("sort") ?? "updated"}
-                onChange={(event) => setParam("sort", event.target.value)}
-              >
-                <option value="updated">Last edited</option>
-                <option value="name">Name</option>
-              </select>
+                onValueChange={(value) => setParam("sort", value)}
+                options={[
+                  { value: "updated", label: "Last edited" },
+                  { value: "name", label: "Name" },
+                ]}
+              />
               <div className="flex rounded-lg border border-border p-0.5">
                 <button
                   className={`grid size-8 place-items-center rounded-md ${view === "grid" ? "bg-secondary text-white" : "text-zinc-500"}`}

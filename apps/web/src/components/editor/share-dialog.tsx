@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalContent, ModalTrigger } from "@/components/ui/modal";
+import { FormSelect } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import type { MemberRole } from "@dataflow/shared";
@@ -68,15 +69,16 @@ export function ShareDialog({
           }}
         >
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" />
-          <select
-            className="h-10 rounded-xl border border-[#2a2a2e] bg-[#121214] px-2 text-sm"
+          <FormSelect
             value={role}
-            onChange={(event) => setRole(event.target.value as MemberRole)}
-          >
-            <option value="editor">Editor</option>
-            <option value="viewer">Viewer</option>
-            <option value="owner">Owner</option>
-          </select>
+            onValueChange={(next) => setRole(next as MemberRole)}
+            className="w-[120px] shrink-0"
+            options={[
+              { value: "editor", label: "Editor" },
+              { value: "viewer", label: "Viewer" },
+              { value: "owner", label: "Owner" },
+            ]}
+          />
           <Button type="submit" className="h-10 shrink-0" disabled={sending}>
             <Send className="size-4" /> {sending ? "Sending..." : "Send invite"}
           </Button>
@@ -92,15 +94,17 @@ export function ShareDialog({
                 <Avatar name={member.name} email={member.email} image={member.image} />
                 <span className="text-sm">{member.name ?? member.email}</span>
               </div>
-              <select
-                className="h-8 rounded-md bg-transparent px-2 text-xs text-zinc-400"
+              <FormSelect
+                size="sm"
+                className="w-[110px]"
                 value={member.role}
-                onChange={(event) => updateMemberRole(projectId, member.id, event.target.value as MemberRole)}
-              >
-                <option value="owner">Owner</option>
-                <option value="editor">Editor</option>
-                <option value="viewer">Viewer</option>
-              </select>
+                onValueChange={(next) => updateMemberRole(projectId, member.id, next as MemberRole)}
+                options={[
+                  { value: "owner", label: "Owner" },
+                  { value: "editor", label: "Editor" },
+                  { value: "viewer", label: "Viewer" },
+                ]}
+              />
             </div>
           ))}
         </div>

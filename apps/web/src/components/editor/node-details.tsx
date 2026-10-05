@@ -54,6 +54,7 @@ import { NODE_ICONS, TECH_ICONS } from "@/lib/icons";
 import { PROPERTY_PRESETS } from "@/lib/property-icons";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { FormSelect } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { MarkdownField } from "@/components/editor/markdown-field";
 import { IconPicker } from "@/components/editor/icon-picker";
@@ -498,27 +499,21 @@ function InfraDetails({
             <Input value={data.title} onChange={(event) => patch({ title: event.target.value })} />
           </Field>
           <Field label="Type">
-            <select
-              className="h-10 w-full rounded-xl border border-[#2a2a2e] bg-[#121214] px-3 text-sm"
+            <FormSelect
               value={data.typeId}
-              onChange={(event) => {
-                const typeId = event.target.value as InfraNodeData["typeId"];
-                const next = nodeTypeById(typeId);
+              onValueChange={(next) => {
+                const typeId = next as InfraNodeData["typeId"];
+                const meta = nodeTypeById(typeId);
                 patch({
                   typeId,
-                  subtitle: next?.subtitle ?? data.subtitle,
-                  shape: next?.defaultShape,
-                  scope: next?.defaultScope,
+                  subtitle: meta?.subtitle ?? data.subtitle,
+                  shape: meta?.defaultShape,
+                  scope: meta?.defaultScope,
                   accentColor: undefined,
                 });
               }}
-            >
-              {NODE_LIBRARY.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              options={NODE_LIBRARY.map((item) => ({ value: item.id, label: item.label }))}
+            />
           </Field>
 
           <MarkdownField
