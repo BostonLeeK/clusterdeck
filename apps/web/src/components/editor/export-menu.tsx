@@ -1,0 +1,70 @@
+"use client";
+
+import { toPng, toSvg } from "html-to-image";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
+import { Button } from "@/components/ui/button";
+import { importDiagramJson } from "@/actions/diagrams";
+import type { DiagramSnapshot } from "@dataflow/shared";
+
+export function ExportMenu({
+  diagramId,
+  getSnapshot,
+  onImport,
+}: {
+  diagramId: string;
+  getSnapshot: () => DiagramSnapshot;
+  onImport: (snapshot: DiagramSnapshot) => void;
+}) {
+  async function exportImage(kind: "png" | "svg") {
+    const node = document.querySelector(".react-flow__viewport") as HTMLElement | null;
+    if (!node) return;
+    const data =
+      kind === "png"
+        ? await toPng(node, { backgroundColor: "#09090b" })
+        : await toSvg(node, { backgroundColor: "#09090b" });
+    const link = document.createElement("a");
+    link.href = data;
+    link.download = `diagram.${kind}`;
+    link.click();
+  }
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(getSnapshot(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "diagram.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJson() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const snapshot = JSON.parse(await file.text()) as DiagramSnapshot;
+      onImport(snapshot);
+      await importDiagramJson(diagramId, snapshot);
+    };
+    input.click();
+  }
+
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <Button size="sm" variant="secondary" className="h-8 rounded-lg">
+          Export
+        </Button>
+      </MenuTrigger>
+      <MenuContent>
+        <MenuItem onSelect={() => void exportImage("png")}>Export PNG</MenuItem>
+        <MenuItem onSelect={() => void exportImage("svg")}>Export SVG</MenuItem>
+        <MenuItem onSelect={exportJson}>Export JSON</MenuItem>
+        <MenuItem onSelect={importJson}>Import JSON</MenuItem>
+      </MenuContent>
+    </Menu>
+  );
+}

@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0b0d;
+  --foreground: #f4f4f5;
+  --card: #141416;
+  --card-foreground: #f4f4f5;
+  --popover: #161618;
+  --popover-foreground: #f4f4f5;
+  --primary: #6d6bff;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1c1f;
+  --secondary-foreground: #fafafa;
+  --muted: #1c1c1f;
+  --muted-foreground: #8b8b93;
+  --accent: #1c1c1f;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #232326;
+  --input: #1a1a1d;
+  --ring: #6d6bff;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-inter);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+a[href],
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary {
+  cursor: pointer;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__minimap {
+  background: #141416 !important;
+  border: 1px solid #232326;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.react-flow__controls {
+  display: none;
+}
+
+.react-flow__edge-path {
+  stroke: #52525b;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+  }
+}
+
+@keyframes status-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes edge-flow-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-status-pulse {
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-status-glow {
+  animation: status-glow 1.4s ease-in-out infinite;
+}
+
+.edge-flow-dash {
+  stroke-dasharray: 6 10;
+  animation: edge-flow-dash 0.9s linear infinite;
+  opacity: 0.85;
+}
+
+.edge-flow-dot {
+  filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.7));
+}
+
+.edge-flow-dot-delayed {
+  filter: drop-shadow(0 0 4px rgba(129, 140, 248, 0.7));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-status-pulse,
+  .animate-status-glow,
+  .edge-flow-dash {
+    animation: none;
+  }
+
+  .edge-flow-dot,
+  .edge-flow-dot-delayed {
+    display: none;
+  }
+}

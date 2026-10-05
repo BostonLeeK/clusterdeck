@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-dataflow}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-dataflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_REALTIME_URL: ${NEXT_PUBLIC_REALTIME_URL:-ws://localhost:1234}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dataflow}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-dataflow}
+    command: sh -c "pnpm db:migrate && pnpm db:seed"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_REALTIME_URL: ${NEXT_PUBLIC_REALTIME_URL:-ws://localhost:1234}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dataflow}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-dataflow}
+      AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me-please-32chars}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      REALTIME_SECRET: ${REALTIME_SECRET:-dev-realtime-secret-change-me}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_REALTIME_URL: ${NEXT_PUBLIC_REALTIME_URL:-ws://localhost:1234}
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      realtime:
+        condition: service_started
+    command: pnpm --filter web start
+
+  realtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_REALTIME_URL: ${NEXT_PUBLIC_REALTIME_URL:-ws://localhost:1234}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dataflow}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-dataflow}
+      REALTIME_SECRET: ${REALTIME_SECRET:-dev-realtime-secret-change-me}
+      REALTIME_PORT: 1234
+    ports:
+      - "${REALTIME_PORT:-1234}:1234"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: pnpm --filter realtime start
+
+volumes:
+  postgres_data:

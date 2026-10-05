@@ -1,0 +1,37 @@
+import {
+  Box,
+  Cloud,
+  Database,
+  FileCode,
+  GitFork,
+  Globe,
+  HardDrive,
+  Inbox,
+  Key,
+  Layers,
+  Puzzle,
+  Radio,
+  Shield,
+  User,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+import type { InfraNodeTypeId } from "@dataflow/shared";
+
+export const NODE_ICONS: Record<InfraNodeTypeId, LucideIcon> = {
+  service: Shield,
+  lambda: Zap,
+  container: Box,
+  postgres: Database,
+  redis: Layers,
+  s3: HardDrive,
+  kafka: Radio,
+  rabbitmq: Inbox,
+  "load-balancer": GitFork,
+  "api-gateway": Globe,
+  cdn: Cloud,
+  "third-party": Puzzle,
+  user: User,
+  "config-map": FileCode,
+  secret: Key,
+};
