@@ -211,7 +211,9 @@ export function ShareDialog({
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm">Anyone with the link can view</div>
-              <div className="text-xs text-zinc-500">Anyone with this link can view the project, even without an account.</div>
+              <div className="text-xs text-zinc-500">
+                Public link access is separate from invites. Removed people can still open this link until you turn it off.
+              </div>
             </div>
             <Switch
               checked={enabled}

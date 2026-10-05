@@ -65,7 +65,6 @@ export async function getAccess(projectId: string, userId?: string) {
       return { project, role: "editor" as MemberRole };
     }
   }
-  if (project.linkAccess === "view") return { project, role: "viewer" as MemberRole };
   return null;
 }
 
