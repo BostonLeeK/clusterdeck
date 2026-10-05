@@ -14,7 +14,7 @@ export default async function SignUpPage({
   const invitePath = params.invite ? `/invite/${params.invite}` : undefined;
   const callbackUrl = safeCallbackUrl(params.callbackUrl ?? invitePath);
   const session = await auth();
-  if (session?.user) redirect(callbackUrl);
+  if (session?.user?.id) redirect(callbackUrl);
 
   const email = params.email?.trim().toLowerCase();
   if (email && invitePath) {

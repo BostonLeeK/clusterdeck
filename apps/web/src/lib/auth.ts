@@ -116,12 +116,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         if (canonical) {
           token.sub = canonical.id;
-          token.email = canonical.email;
-          if (canonical.name) token.name = canonical.name;
-          if (canonical.image) token.picture = canonical.image;
+          token.email = canonical.email ?? undefined;
+          token.name = canonical.name ?? undefined;
+          token.picture = canonical.image ?? undefined;
           return token;
         }
       }
+
       if (user?.id) {
         token.sub = user.id;
         if (user.email) token.email = user.email;
@@ -129,19 +130,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (user.image) token.picture = user.image;
         return token;
       }
+
       if (token.sub) {
-        const [byId] = await db.select({ id: users.id }).from(users).where(eq(users.id, token.sub)).limit(1);
-        if (byId) return token;
+        const [byId] = await db
+          .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+          .from(users)
+          .where(eq(users.id, token.sub))
+          .limit(1);
+        if (byId) {
+          token.email = byId.email ?? token.email;
+          token.name = byId.name ?? token.name;
+          token.picture = byId.image ?? token.picture;
+          return token;
+        }
       }
+
       const email = typeof token.email === "string" ? token.email.trim().toLowerCase() : "";
       if (email) {
         const canonical = await resolveCanonicalUserByEmail(email);
-        if (canonical) token.sub = canonical.id;
+        if (canonical) {
+          token.sub = canonical.id;
+          token.email = canonical.email ?? undefined;
+          token.name = canonical.name ?? undefined;
+          token.picture = canonical.image ?? undefined;
+          return token;
+        }
       }
-      return token;
+
+      return {};
     },
     session({ session, token }) {
-      if (session.user && token.sub) {
+      if (!token?.sub) {
+        return { ...session, user: undefined };
+      }
+      if (session.user) {
         session.user.id = token.sub;
         if (typeof token.name === "string") session.user.name = token.name;
         if (typeof token.picture === "string") session.user.image = token.picture;

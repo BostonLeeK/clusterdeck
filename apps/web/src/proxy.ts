@@ -22,7 +22,7 @@ export async function proxy(request: NextRequest) {
   ) {
     const session = await auth();
     if (
-      session?.user &&
+      session?.user?.id &&
       (pathname === "/sign-in" ||
         pathname === "/sign-up" ||
         pathname.startsWith("/sign-in/") ||
@@ -39,7 +39,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const session = await auth();
-  if (!session?.user && (pathname.startsWith("/projects") || pathname.startsWith("/editor") || pathname === "/")) {
+  if (!session?.user?.id && (pathname.startsWith("/projects") || pathname.startsWith("/editor") || pathname === "/")) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("callbackUrl", pathname);

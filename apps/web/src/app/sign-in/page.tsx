@@ -11,7 +11,7 @@ export default async function SignInPage({
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
   const session = await auth();
-  if (session?.user) redirect(callbackUrl);
+  if (session?.user?.id) redirect(callbackUrl);
 
   const notice =
     params.verified === "1"

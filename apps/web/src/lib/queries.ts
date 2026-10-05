@@ -17,9 +17,9 @@ import { auth } from "@/lib/auth";
 
 export async function requireUser() {
   const session = await auth();
-  if (!session?.user) redirect("/sign-in");
+  if (!session?.user?.id && !session?.user?.email) redirect("/sign-in");
 
-  if (session.user.id) {
+  if (session.user?.id) {
     const [byId] = await db
       .select({ id: users.id, name: users.name, email: users.email, image: users.image })
       .from(users)
@@ -28,7 +28,7 @@ export async function requireUser() {
     if (byId) return byId;
   }
 
-  const email = session.user.email?.trim().toLowerCase();
+  const email = session.user?.email?.trim().toLowerCase();
   if (email) {
     const [byEmail] = await db
       .select({ id: users.id, name: users.name, email: users.email, image: users.image })
