@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { safeCallbackUrl } from "@/lib/urls";
 
-const publicPaths = ["/sign-in", "/sign-up", "/verify-email", "/forgot-password", "/reset-password", "/p"];
+const publicPaths = [
+  "/sign-in",
+  "/sign-up",
+  "/verify-email",
+  "/forgot-password",
+  "/reset-password",
+  "/p",
+  "/invite",
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -10,6 +19,21 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   ) {
+    const session = await auth();
+    if (
+      session?.user &&
+      (pathname === "/sign-in" ||
+        pathname === "/sign-up" ||
+        pathname.startsWith("/sign-in/") ||
+        pathname.startsWith("/sign-up/"))
+    ) {
+      const invite = request.nextUrl.searchParams.get("invite");
+      const callbackUrl = safeCallbackUrl(
+        request.nextUrl.searchParams.get("callbackUrl") ??
+          (invite ? `/invite/${invite}` : undefined),
+      );
+      return NextResponse.redirect(new URL(callbackUrl, request.url));
+    }
     return NextResponse.next();
   }
 

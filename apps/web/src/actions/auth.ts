@@ -17,6 +17,7 @@ import {
 import { appBaseUrl, emailConfigured, sendEmail } from "@/lib/email";
 import { passwordResetEmailHtml, verificationEmailHtml } from "@/lib/email-templates";
 import { acceptPendingInvites } from "@/lib/invites";
+import { safeCallbackUrl } from "@/lib/urls";
 
 const argon = {
   memoryCost: 19456,
@@ -108,7 +109,7 @@ export async function loginUser(formData: FormData) {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: String(formData.get("callbackUrl") ?? "/projects"),
+      redirectTo: safeCallbackUrl(String(formData.get("callbackUrl") ?? "/projects")),
     });
   } catch (error) {
     if (error instanceof AuthError) return { error: "Invalid email or password." };
@@ -213,8 +214,8 @@ export async function getResetTokenState(token: string) {
   return { valid: true as const };
 }
 
-export async function oauthSignIn(provider: "github" | "google") {
-  await signIn(provider, { redirectTo: "/projects" });
+export async function oauthSignIn(provider: "github" | "google", callbackUrl?: string) {
+  await signIn(provider, { redirectTo: safeCallbackUrl(callbackUrl) });
 }
 
 export async function logout() {

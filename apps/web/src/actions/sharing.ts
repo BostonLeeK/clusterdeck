@@ -21,7 +21,6 @@ export async function inviteMember(projectId: string, email: string, role: Membe
   }
 
   const [existingUser] = await db.select().from(users).where(eq(users.email, normalized)).limit(1);
-  let inviteToken: string | null = null;
 
   if (existingUser) {
     const [member] = await db
@@ -37,30 +36,30 @@ export async function inviteMember(projectId: string, email: string, role: Membe
     } else {
       await db.insert(projectMembers).values({ projectId, userId: existingUser.id, role });
     }
-  } else {
-    const [existingInvite] = await db
-      .select()
-      .from(projectInvites)
-      .where(and(eq(projectInvites.projectId, projectId), eq(projectInvites.email, normalized)))
-      .limit(1);
+  }
 
-    if (existingInvite) {
-      await db.update(projectInvites).set({ role }).where(eq(projectInvites.id, existingInvite.id));
-      inviteToken = existingInvite.token;
-    } else {
-      const [created] = await db
-        .insert(projectInvites)
-        .values({ projectId, email: normalized, role })
-        .returning();
-      inviteToken = created?.token ?? null;
-    }
+  const [existingInvite] = await db
+    .select()
+    .from(projectInvites)
+    .where(and(eq(projectInvites.projectId, projectId), eq(projectInvites.email, normalized)))
+    .limit(1);
+
+  let inviteToken: string;
+  if (existingInvite) {
+    await db.update(projectInvites).set({ role }).where(eq(projectInvites.id, existingInvite.id));
+    inviteToken = existingInvite.token;
+  } else {
+    const [created] = await db
+      .insert(projectInvites)
+      .values({ projectId, email: normalized, role })
+      .returning();
+    if (!created) return { error: "Couldn’t create invite." };
+    inviteToken = created.token;
   }
 
   await db.update(projects).set({ kind: "shared", updatedAt: new Date() }).where(eq(projects.id, projectId));
 
-  const actionUrl = existingUser
-    ? `${appBaseUrl()}/editor/${projectId}`
-    : `${appBaseUrl()}/sign-up?email=${encodeURIComponent(normalized)}${inviteToken ? `&invite=${inviteToken}` : ""}`;
+  const actionUrl = `${appBaseUrl()}/invite/${inviteToken}`;
 
   try {
     await sendEmail({

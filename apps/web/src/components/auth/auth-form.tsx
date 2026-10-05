@@ -16,10 +16,12 @@ export function AuthForm({
   mode,
   notice,
   defaultEmail,
+  callbackUrl = "/projects",
 }: {
   mode: "sign-in" | "sign-up";
   notice?: string | null;
   defaultEmail?: string;
+  callbackUrl?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(notice ?? null);
@@ -68,11 +70,19 @@ export function AuthForm({
       </h1>
       {info ? <p className="mb-4 text-center text-sm text-emerald-400">{info}</p> : null}
       <div className="space-y-2.5">
-        <Button className="h-11 w-full rounded-xl" variant="secondary" onClick={() => oauthSignIn("github")}>
+        <Button
+          className="h-11 w-full rounded-xl"
+          variant="secondary"
+          onClick={() => oauthSignIn("github", callbackUrl)}
+        >
           <Icon icon="simple-icons:github" className="size-4" />
           Continue with GitHub
         </Button>
-        <Button className="h-11 w-full rounded-xl" variant="secondary" onClick={() => oauthSignIn("google")}>
+        <Button
+          className="h-11 w-full rounded-xl"
+          variant="secondary"
+          onClick={() => oauthSignIn("google", callbackUrl)}
+        >
           <Icon icon="simple-icons:google" className="size-4" />
           Continue with Google
         </Button>
@@ -87,6 +97,7 @@ export function AuthForm({
         action={async (formData) => {
           setError(null);
           setInfo(null);
+          formData.set("callbackUrl", callbackUrl);
           const result = await action(formData);
           if (result && "needsVerification" in result && result.needsVerification && result.email) {
             setPendingEmail(result.email);
@@ -95,6 +106,7 @@ export function AuthForm({
           if (result?.error) setError(result.error);
         }}
       >
+        <input type="hidden" name="callbackUrl" value={callbackUrl} />
         {mode === "sign-up" ? (
           <div className="space-y-1.5">
             <Label htmlFor="name">Full name</Label>
@@ -146,14 +158,20 @@ export function AuthForm({
         {mode === "sign-up" ? (
           <>
             Already have an account?{" "}
-            <a className="text-indigo-400 hover:text-indigo-300" href="/sign-in">
+            <a
+              className="text-indigo-400 hover:text-indigo-300"
+              href={`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+            >
               Sign in
             </a>
           </>
         ) : (
           <>
             Don&apos;t have an account?{" "}
-            <a className="text-indigo-400 hover:text-indigo-300" href="/sign-up">
+            <a
+              className="text-indigo-400 hover:text-indigo-300"
+              href={`/sign-up?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+            >
               Create one
             </a>
           </>
