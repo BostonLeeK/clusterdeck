@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Toaster } from "@/components/ui/toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -16,7 +17,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} h-full dark`}>
-      <body className="min-h-full bg-background font-sans text-foreground antialiased">{children}</body>
+      <body className="min-h-full bg-background font-sans text-foreground antialiased">
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }

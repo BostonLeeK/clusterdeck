@@ -96,3 +96,36 @@ export function passwordResetEmailHtml({ name, resetUrl }: { name: string; reset
     `,
   });
 }
+
+export function projectInviteEmailHtml({
+  inviterName,
+  projectName,
+  role,
+  actionUrl,
+  existingUser,
+}: {
+  inviterName: string;
+  projectName: string;
+  role: string;
+  actionUrl: string;
+  existingUser: boolean;
+}) {
+  const actionLabel = existingUser ? "Open project" : "Accept invite";
+  return layout({
+    title: `Invite to ${projectName}`,
+    preview: `${inviterName} invited you to collaborate on ${projectName}.`,
+    body: `
+      <h1 style="margin:16px 0 12px;font-size:28px;line-height:1.15;letter-spacing:-0.03em;color:#f8fafc;">You're invited</h1>
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#a1a1aa;">
+        ${escapeHtml(inviterName)} invited you to <strong style="color:#f8fafc;">${escapeHtml(projectName)}</strong>
+        as <strong style="color:#f8fafc;">${escapeHtml(role)}</strong>.
+        ${existingUser ? "Sign in to open the project." : "Create an account with this email to accept the invite."}
+      </p>
+      <div style="margin:24px 0;">${button(actionUrl, actionLabel)}</div>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#71717a;">
+        Or paste this link into your browser:<br />
+        <a href="${escapeHtml(actionUrl)}" style="color:#60a5fa;word-break:break-all;">${escapeHtml(actionUrl)}</a>
+      </p>
+    `,
+  });
+}

@@ -98,6 +98,11 @@ summary {
   display: none !important;
 }
 
+.react-flow__selection {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border: 1px solid rgba(129, 140, 248, 0.7) !important;
+}
+
 .react-flow__minimap {
   background: #141416 !important;
   border: 1px solid #232326 !important;

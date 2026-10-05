@@ -59,6 +59,8 @@ services:
       REALTIME_SECRET: ${REALTIME_SECRET:-dev-realtime-secret-change-me}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       NEXT_PUBLIC_REALTIME_URL: ${NEXT_PUBLIC_REALTIME_URL:-ws://localhost:1234}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-ClusterDeck <noreply@clusterdeck.space>}
       HOSTNAME: 0.0.0.0
       PORT: 3000
     ports:

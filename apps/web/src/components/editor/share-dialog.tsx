@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalContent, ModalTrigger } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import type { MemberRole } from "@dataflow/shared";
 
 type Member = {
@@ -32,6 +33,7 @@ export function ShareDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MemberRole>("editor");
   const [enabled, setEnabled] = useState(linkAccess === "view");
+  const [sending, setSending] = useState(false);
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const url = `${origin}/p/${shareToken}`;
 
@@ -48,8 +50,21 @@ export function ShareDialog({
           className="mb-5 flex gap-2"
           onSubmit={async (event) => {
             event.preventDefault();
-            await inviteMember(projectId, email, role);
-            setEmail("");
+            if (!email.trim() || sending) return;
+            setSending(true);
+            try {
+              const result = await inviteMember(projectId, email, role);
+              if (result?.error) {
+                toast(result.error, "error");
+                return;
+              }
+              toast("Invite email sent", "success");
+              setEmail("");
+            } catch {
+              toast("Couldn’t send invite", "error");
+            } finally {
+              setSending(false);
+            }
           }}
         >
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" />
@@ -62,8 +77,8 @@ export function ShareDialog({
             <option value="viewer">Viewer</option>
             <option value="owner">Owner</option>
           </select>
-          <Button type="submit" className="h-10 shrink-0">
-            <Send className="size-4" /> Send invite
+          <Button type="submit" className="h-10 shrink-0" disabled={sending}>
+            <Send className="size-4" /> {sending ? "Sending..." : "Send invite"}
           </Button>
         </form>
         <div className="mb-5 space-y-3">
@@ -108,8 +123,13 @@ export function ShareDialog({
             <Button
               variant="secondary"
               className="h-9 shrink-0"
-              onClick={() => {
-                void navigator.clipboard.writeText(url);
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(url);
+                  toast("Link copied", "success");
+                } catch {
+                  toast("Couldn’t copy link", "error");
+                }
               }}
             >
               <Copy className="size-3.5" /> Copy link

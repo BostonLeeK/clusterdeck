@@ -29,6 +29,7 @@ import {
   type TagDef,
 } from "@dataflow/shared";
 import { fromFlowNode, normalizeFlowInfraNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
+import { resolveRealtimeUrl } from "@/lib/realtime-url";
 import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
@@ -176,7 +177,7 @@ export function useDiagramSync(opts: {
         if (cancelled) return;
         setRole(nextRole);
         setReadOnly(nextReadOnly);
-        const url = process.env.NEXT_PUBLIC_REALTIME_URL;
+        const url = resolveRealtimeUrl();
         if (!url) return;
         const provider = new HocuspocusProvider({
           url,

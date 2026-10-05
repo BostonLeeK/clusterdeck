@@ -6,6 +6,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { verify } from "@node-rs/argon2";
 import { db, accounts, sessions, users, verificationTokens } from "@dataflow/db";
+import { acceptPendingInvites } from "@/lib/invites";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -56,6 +57,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  events: {
+    async signIn({ user }) {
+      if (user.id && user.email) {
+        await acceptPendingInvites(user.email, user.id);
+      }
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user?.id) {

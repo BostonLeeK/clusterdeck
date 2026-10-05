@@ -51,6 +51,7 @@ import {
   type CanvasMenuState,
 } from "@/components/editor/canvas-context-menu";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
 
@@ -89,11 +90,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const router = useRouter();
   const wrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView, zoomIn, zoomOut, getZoom, getIntersectingNodes } = useReactFlow();
-  const [tool, setTool] = useState<"select" | "pan">("select");
+  const isPublic = Boolean(props.forceReadOnly);
+  const [tool, setTool] = useState<"select" | "pan">(isPublic ? "pan" : "select");
   const [zoom, setZoom] = useState(1);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(!isPublic);
+  const [rightOpen, setRightOpen] = useState(!isPublic);
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
   const [pinnedTag, setPinnedTag] = useState<string | null>(null);
   const [tagMode, setTagMode] = useState<TagPerspectiveMode>("highlight");
@@ -337,77 +339,90 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       <header className="flex h-12 items-center justify-between border-b border-[#1e1e22] px-4">
         <div className="flex min-w-0 items-center gap-1 text-[13px] text-zinc-500">
           <Link
-            href="/projects"
-            title="All projects"
+            href={isPublic ? "/sign-in" : "/projects"}
+            title={isPublic ? "Sign in" : "All projects"}
             className="mr-1 shrink-0 rounded-lg p-0.5 hover:bg-white/5"
           >
             <Logo showName={false} className="gap-0" />
           </Link>
-          <button
-            type="button"
-            title={props.trail.length > 1 ? "Up one level" : "Back to projects"}
-            className="mr-1 grid size-7 shrink-0 place-items-center rounded-lg hover:bg-white/5"
-            onClick={() => {
-              if (props.trail.length > 1) {
-                const parent = props.trail[props.trail.length - 2];
-                if (parent) router.push(`/editor/${props.projectId}/${parent.id}`);
-                return;
-              }
-              router.push("/projects");
-            }}
-          >
-            <ArrowLeft className="size-4" />
-          </button>
-          <button
-            type="button"
-            className="shrink-0 truncate text-zinc-200 hover:text-white"
-            onClick={() => {
-              const root = props.trail[0];
-              if (root) router.push(`/editor/${props.projectId}/${root.id}`);
-              else router.push("/projects");
-            }}
-          >
-            {props.projectName}
-          </button>
-          {props.trail.slice(1).map((item, index, items) => (
-            <span key={item.id} className="flex min-w-0 items-center">
-              <span className="mx-1.5 shrink-0 text-zinc-600">›</span>
-              <button
-                type="button"
-                className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
-                onClick={() => router.push(`/editor/${props.projectId}/${item.id}`)}
-              >
-                {item.name}
-              </button>
-            </span>
-          ))}
+          {!isPublic ? (
+            <button
+              type="button"
+              title={props.trail.length > 1 ? "Up one level" : "Back to projects"}
+              className="mr-1 grid size-7 shrink-0 place-items-center rounded-lg hover:bg-white/5"
+              onClick={() => {
+                if (props.trail.length > 1) {
+                  const parent = props.trail[props.trail.length - 2];
+                  if (parent) router.push(`/editor/${props.projectId}/${parent.id}`);
+                  return;
+                }
+                router.push("/projects");
+              }}
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+          ) : null}
+          <span className="shrink-0 truncate text-zinc-200">{props.projectName}</span>
+          {!isPublic
+            ? props.trail.slice(1).map((item, index, items) => (
+                <span key={item.id} className="flex min-w-0 items-center">
+                  <span className="mx-1.5 shrink-0 text-zinc-600">›</span>
+                  <button
+                    type="button"
+                    className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
+                    onClick={() => router.push(`/editor/${props.projectId}/${item.id}`)}
+                  >
+                    {item.name}
+                  </button>
+                </span>
+              ))
+            : null}
+          {isPublic ? <span className="ml-2 shrink-0 text-xs text-zinc-500">View only</span> : null}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex -space-x-1.5 pr-1">
-            {props.members.map((member) => (
-              <Avatar key={member.id} name={member.name} email={member.email} image={member.image} className="size-6 ring-2 ring-[#0b0b0d]" />
-            ))}
-            {sync.presence.map((user) => (
-              <span key={user.clientId} className="size-6 rounded-full ring-2 ring-[#0b0b0d]" style={{ background: user.color }} />
-            ))}
-          </div>
-          <ShareDialog
-            projectId={props.projectId}
-            shareToken={props.shareToken}
-            linkAccess={props.linkAccess}
-            members={props.members}
-          />
-          <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
-          <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.undo}>
-            <Undo2 className="size-4" />
-          </button>
-          <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.redo}>
-            <Redo2 className="size-4" />
-          </button>
+          {isPublic ? (
+            <Button asChild size="sm" className="h-8 rounded-lg">
+              <Link href="/sign-in">Sign in to edit</Link>
+            </Button>
+          ) : (
+            <>
+              <div className="flex -space-x-1.5 pr-1">
+                {props.members.map((member) => (
+                  <Avatar
+                    key={member.id}
+                    name={member.name}
+                    email={member.email}
+                    image={member.image}
+                    className="size-6 ring-2 ring-[#0b0b0d]"
+                  />
+                ))}
+                {sync.presence.map((user) => (
+                  <span
+                    key={user.clientId}
+                    className="size-6 rounded-full ring-2 ring-[#0b0b0d]"
+                    style={{ background: user.color }}
+                  />
+                ))}
+              </div>
+              <ShareDialog
+                projectId={props.projectId}
+                shareToken={props.shareToken}
+                linkAccess={props.linkAccess}
+                members={props.members}
+              />
+              <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
+              <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.undo}>
+                <Undo2 className="size-4" />
+              </button>
+              <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.redo}>
+                <Redo2 className="size-4" />
+              </button>
+            </>
+          )}
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        {leftOpen ? (
+        {!isPublic && leftOpen ? (
           <aside className="flex w-[260px] shrink-0 flex-col border-r border-[#1e1e22] bg-[#0b0b0d]">
             <NodeLibrary onAdd={(typeId) => createNode(typeId)} onCollapse={() => setLeftOpen(false)} />
             <Outline
@@ -421,7 +436,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           </aside>
         ) : null}
         <div className="relative min-w-0 flex-1" ref={wrapper}>
-          {!leftOpen ? (
+          {!isPublic && !leftOpen ? (
             <button
               type="button"
               title="Open left panel"
@@ -431,7 +446,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <PanelLeftOpen className="size-4" />
             </button>
           ) : null}
-          {!rightOpen ? (
+          {!isPublic && !rightOpen ? (
             <button
               type="button"
               title="Open right panel"
@@ -441,15 +456,17 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <PanelRightOpen className="size-4" />
             </button>
           ) : null}
-          <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
-            <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
-            <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
-            <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
-            <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
-            <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
-            <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
-          </div>
-          {props.insideLabel ? (
+          {!isPublic ? (
+            <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
+              <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
+              <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
+              <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
+              <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
+              <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
+              <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
+            </div>
+          ) : null}
+          {props.insideLabel && !isPublic ? (
             <div className="absolute top-3 left-16 z-10 inline-flex items-center gap-2 rounded-full border border-[#2a2a2e] bg-[#141416] px-3 py-1 text-xs text-zinc-300">
               Inside: {props.insideLabel}
             </div>
@@ -464,6 +481,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               onEdgesChange={sync.onEdgesChange}
               onConnect={sync.onConnect}
               onNodeClick={(event, node) => {
+                if (isPublic) return;
                 setMenu(null);
                 setRightOpen(true);
                 if (event.shiftKey) {
@@ -494,6 +512,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 }
               }}
               onEdgeClick={(_, edge) => {
+                if (isPublic) return;
                 setMenu(null);
                 setRightOpen(true);
                 selectEdgeOnly(edge.id);
@@ -504,6 +523,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
               }}
               onPaneContextMenu={(event) => {
+                if (isPublic || sync.readOnly) return;
                 event.preventDefault();
                 setMenu({
                   kind: "pane",
@@ -513,6 +533,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 });
               }}
               onNodeContextMenu={(event, node) => {
+                if (isPublic || sync.readOnly) return;
                 event.preventDefault();
                 if (!node.selected) selectNodeOnly(node.id);
                 setMenu({
@@ -524,6 +545,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 });
               }}
               onEdgeContextMenu={(event, edge) => {
+                if (isPublic || sync.readOnly) return;
                 event.preventDefault();
                 selectEdgeOnly(edge.id);
                 setMenu({
@@ -535,24 +557,30 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               }}
               onPaneMouseMove={onPaneMouseMove}
               onDrop={(event) => {
+                if (isPublic) return;
                 event.preventDefault();
                 const typeId = event.dataTransfer.getData("application/dataflow-node") as InfraNodeTypeId;
                 if (!typeId) return;
                 createNode(typeId, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
               }}
               onDragOver={(event) => {
+                if (isPublic) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
               }}
               onNodeDoubleClick={(_, node) => {
+                if (isPublic) return;
                 if (node.type === "infra") void openInner();
               }}
               fitView
-              panOnDrag={tool === "pan"}
-              selectionOnDrag={tool === "select"}
-              nodesDraggable={!sync.readOnly && tool === "select"}
-              nodesConnectable={!sync.readOnly}
-              elementsSelectable={tool === "select"}
+              panOnDrag={isPublic || tool === "pan" ? true : [1]}
+              selectionOnDrag={false}
+              selectNodesOnDrag={false}
+              selectionKeyCode={isPublic ? null : "Shift"}
+              multiSelectionKeyCode={isPublic ? null : "Shift"}
+              nodesDraggable={!sync.readOnly && !isPublic && tool === "select"}
+              nodesConnectable={!sync.readOnly && !isPublic}
+              elementsSelectable={!isPublic && tool === "select"}
               onMoveEnd={() => setZoom(getZoom())}
               onInit={(instance) => setZoom(instance.getZoom())}
               proOptions={{ hideAttribution: true }}
@@ -572,29 +600,32 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               />
             </ReactFlow>
           </DiagramPerspectiveProvider>
-          <PerspectiveBar
-            tagDefs={tagDefs}
-            flows={sync.meta.flows}
-            hoveredTag={hoveredTag}
-            pinnedTag={pinnedTag}
-            tagMode={tagMode}
-            activeFlowId={activeFlowId}
-            readOnly={sync.readOnly}
-            onHoverTag={setHoveredTag}
-            onPinTag={setPinnedTag}
-            onTagMode={setTagMode}
-            onActiveFlow={setActiveFlowId}
-            onCreateFlow={() => createFlow([])}
-            onRemoveFlow={(id) => {
-              sync.removeFlow(id);
-              if (activeFlowId === id) setActiveFlowId(null);
-            }}
-            onRenameFlow={(id, name) => {
-              const flow = sync.meta.flows.find((item) => item.id === id);
-              if (!flow) return;
-              sync.upsertFlow({ ...flow, name });
-            }}
-          />
+          {!isPublic ? (
+            <PerspectiveBar
+              tagDefs={tagDefs}
+              flows={sync.meta.flows}
+              hoveredTag={hoveredTag}
+              pinnedTag={pinnedTag}
+              tagMode={tagMode}
+              activeFlowId={activeFlowId}
+              readOnly={sync.readOnly}
+              onHoverTag={setHoveredTag}
+              onPinTag={setPinnedTag}
+              onTagMode={setTagMode}
+              onActiveFlow={setActiveFlowId}
+              onCreateFlow={() => createFlow([])}
+              onRemoveFlow={(id) => {
+                sync.removeFlow(id);
+                if (activeFlowId === id) setActiveFlowId(null);
+              }}
+              onRenameFlow={(id, name) => {
+                const flow = sync.meta.flows.find((item) => item.id === id);
+                if (!flow) return;
+                sync.upsertFlow({ ...flow, name });
+              }}
+            />
+          ) : null}
+          {!isPublic ? (
           <CanvasContextMenu menu={menu} onClose={closeMenu}>
             {menu?.kind === "pane" ? (
               <>
@@ -776,22 +807,34 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               </>
             ) : null}
           </CanvasContextMenu>
-          {sync.presence.map((user) =>
-            user.cursor ? (
-              <div
-                key={user.clientId}
-                className="pointer-events-none absolute z-20 text-[10px]"
-                style={{ left: 0, top: 0, transform: `translate(${user.cursor.x}px, ${user.cursor.y}px)` }}
-              >
-                <div className="size-2 rounded-full" style={{ background: user.color }} />
-                <span style={{ color: user.color }}>{user.name}</span>
-              </div>
-            ) : null,
-          )}
+          ) : null}
+          {!isPublic
+            ? sync.presence.map((user) =>
+                user.cursor ? (
+                  <div
+                    key={user.clientId}
+                    className="pointer-events-none absolute z-20 text-[10px]"
+                    style={{ left: 0, top: 0, transform: `translate(${user.cursor.x}px, ${user.cursor.y}px)` }}
+                  >
+                    <div className="size-2 rounded-full" style={{ background: user.color }} />
+                    <span style={{ color: user.color }}>{user.name}</span>
+                  </div>
+                ) : null,
+              )
+            : null}
           <div className="absolute bottom-4 left-4 flex items-center gap-2 text-xs text-zinc-500">
-            <span className="size-1.5 rounded-full bg-emerald-400" />
-            {sync.saved ? "All changes saved" : "Saving..."}
-            {sync.readOnly ? " · View only" : ""}
+            {isPublic ? (
+              <>
+                <span className="size-1.5 rounded-full bg-sky-400" />
+                Public view · Sign in to collaborate
+              </>
+            ) : (
+              <>
+                <span className="size-1.5 rounded-full bg-emerald-400" />
+                {sync.saved ? "All changes saved" : "Saving..."}
+                {sync.readOnly ? " · View only" : ""}
+              </>
+            )}
           </div>
           <div className="absolute right-4 bottom-4 z-10 flex items-center gap-1 rounded-xl border border-[#2a2a2e] bg-[#141416] px-1 py-1 text-xs text-zinc-400">
             <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => void zoomOut()}>
@@ -806,7 +849,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </button>
           </div>
         </div>
-        {rightOpen ? (
+        {!isPublic && rightOpen ? (
           <aside className="w-[420px] shrink-0 border-l border-[#1e1e22] bg-[#0b0b0d]">
             {selectedEdge && !selected ? (
               <EdgeDetails

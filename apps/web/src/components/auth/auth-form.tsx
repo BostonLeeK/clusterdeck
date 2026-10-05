@@ -12,7 +12,15 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
-export function AuthForm({ mode, notice }: { mode: "sign-in" | "sign-up"; notice?: string | null }) {
+export function AuthForm({
+  mode,
+  notice,
+  defaultEmail,
+}: {
+  mode: "sign-in" | "sign-up";
+  notice?: string | null;
+  defaultEmail?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(notice ?? null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -95,7 +103,15 @@ export function AuthForm({ mode, notice }: { mode: "sign-in" | "sign-up"; notice
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="email">Email address</Label>
-          <Input id="email" name="email" type="email" placeholder="you@company.com" required className="h-11" />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="you@company.com"
+            required
+            className="h-11"
+            defaultValue={defaultEmail}
+          />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">

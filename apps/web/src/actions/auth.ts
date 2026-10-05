@@ -16,6 +16,7 @@ import {
 } from "@/lib/auth-tokens";
 import { appBaseUrl, emailConfigured, sendEmail } from "@/lib/email";
 import { passwordResetEmailHtml, verificationEmailHtml } from "@/lib/email-templates";
+import { acceptPendingInvites } from "@/lib/invites";
 
 const argon = {
   memoryCost: 19456,
@@ -147,6 +148,7 @@ export async function verifyEmailToken(token: string) {
   if (!user) return { error: "Account not found." };
 
   await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id));
+  await acceptPendingInvites(email, user.id);
   return { ok: true as const, email };
 }
 
