@@ -4,10 +4,16 @@ import { CATEGORY_LABELS, NODE_CATEGORIES, NODE_LIBRARY, type InfraNodeTypeId } 
 import { NODE_ICONS } from "@/lib/icons";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PanelRight } from "lucide-react";
+import { PanelLeftClose } from "lucide-react";
 import { useMemo, useState } from "react";
 
-export function NodeLibrary({ onAdd }: { onAdd: (typeId: InfraNodeTypeId) => void }) {
+export function NodeLibrary({
+  onAdd,
+  onCollapse,
+}: {
+  onAdd: (typeId: InfraNodeTypeId) => void;
+  onCollapse?: () => void;
+}) {
   const [query, setQuery] = useState("");
   const items = useMemo(
     () => NODE_LIBRARY.filter((item) => item.label.toLowerCase().includes(query.toLowerCase())),
@@ -17,7 +23,14 @@ export function NodeLibrary({ onAdd }: { onAdd: (typeId: InfraNodeTypeId) => voi
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="text-sm font-medium">Node library</div>
-        <PanelRight className="size-4 text-zinc-600" />
+        <button
+          type="button"
+          title="Collapse left panel"
+          className="grid size-7 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          onClick={onCollapse}
+        >
+          <PanelLeftClose className="size-4" />
+        </button>
       </div>
       <div className="px-3 pb-3">
         <Input

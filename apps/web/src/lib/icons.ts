@@ -35,3 +35,17 @@ export const NODE_ICONS: Record<InfraNodeTypeId, LucideIcon> = {
   "config-map": FileCode,
   secret: Key,
 };
+
+export const TECH_ICONS: Record<string, LucideIcon> = {
+  box: Box,
+  zap: Zap,
+  "file-code": FileCode,
+  database: Database,
+  layers: Layers,
+  radio: Radio,
+  "hard-drive": HardDrive,
+  "git-fork": GitFork,
+  globe: Globe,
+  cloud: Cloud,
+  puzzle: Puzzle,
+};

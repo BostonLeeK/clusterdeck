@@ -14,13 +14,19 @@ import {
 import * as Y from "yjs";
 import {
   applySnapshot,
+  emptyMeta,
   getEdgeMap,
+  getMetaMap,
   getNodeMap,
   snapshotFromDoc,
   type DiagramEdge,
+  type DiagramFlow,
+  type DiagramMeta,
   type DiagramNode,
   type DiagramSnapshot,
+  type EdgeLineShape,
   type MemberRole,
+  type TagDef,
 } from "@dataflow/shared";
 import { fromFlowNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
 import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
@@ -46,7 +52,7 @@ function flowNodesToDiagram(nodes: Node[]): DiagramNode[] {
 
 function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
   return edges.map((edge) => {
-    const data = edge.data as { animated?: boolean } | undefined;
+    const data = edge.data as { animated?: boolean; lineShape?: EdgeLineShape } | undefined;
     return {
       id: edge.id,
       source: edge.source,
@@ -55,6 +61,7 @@ function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
       targetHandle: edge.targetHandle,
       label: typeof edge.label === "string" ? edge.label : undefined,
       animated: Boolean(data?.animated ?? edge.animated),
+      lineShape: data?.lineShape ?? "bezier",
     };
   });
 }
@@ -69,8 +76,10 @@ export function useDiagramSync(opts: {
   const undoRef = useRef<Y.UndoManager | null>(null);
   const nodesRef = useRef<Node[]>(toFlowNodes(opts.initial.nodes));
   const edgesRef = useRef<Edge[]>(toFlowEdges(opts.initial.edges));
+  const metaRef = useRef<DiagramMeta>(opts.initial.meta ?? emptyMeta());
   const [nodes, setNodesState] = useState<Node[]>(nodesRef.current);
   const [edges, setEdgesState] = useState<Edge[]>(edgesRef.current);
+  const [meta, setMetaState] = useState<DiagramMeta>(metaRef.current);
   const [saved, setSaved] = useState(true);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
   const [role, setRole] = useState<MemberRole>(opts.forceReadOnly ? "viewer" : "editor");
@@ -108,18 +117,22 @@ export function useDiagramSync(opts: {
       ...edge,
       selected: selectedEdges.has(edge.id),
     }));
+    const nextMeta = snapshot.meta ?? emptyMeta();
     nodesRef.current = nextNodes;
     edgesRef.current = nextEdges;
+    metaRef.current = nextMeta;
     setNodesState(nextNodes);
     setEdgesState(nextEdges);
+    setMetaState(nextMeta);
   }, []);
 
   const persistLocal = useCallback(
-    (nextNodes: Node[], nextEdges: Edge[]) => {
+    (nextNodes: Node[], nextEdges: Edge[], nextMeta: DiagramMeta = metaRef.current) => {
       const doc = docRef.current;
-      const snapshot = {
+      const snapshot: DiagramSnapshot = {
         nodes: flowNodesToDiagram(nextNodes),
         edges: flowEdgesToDiagram(nextEdges),
+        meta: nextMeta,
       };
       applySnapshot(doc, snapshot, LOCAL_ORIGIN);
       setSaved(false);
@@ -136,7 +149,9 @@ export function useDiagramSync(opts: {
   useEffect(() => {
     const doc = docRef.current;
     applySnapshot(doc, initialRef.current);
-    undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc)]);
+    metaRef.current = initialRef.current.meta ?? emptyMeta();
+    setMetaState(metaRef.current);
+    undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc), getMetaMap(doc)]);
 
     const onYChange = (_event: unknown, transaction: Y.Transaction) => {
       if (transaction.origin === LOCAL_ORIGIN) return;
@@ -144,6 +159,7 @@ export function useDiagramSync(opts: {
     };
     getNodeMap(doc).observe(onYChange);
     getEdgeMap(doc).observe(onYChange);
+    getMetaMap(doc).observe(onYChange);
 
     let cancelled = false;
     if (opts.forceReadOnly) {
@@ -151,6 +167,7 @@ export function useDiagramSync(opts: {
         cancelled = true;
         getNodeMap(doc).unobserve(onYChange);
         getEdgeMap(doc).unobserve(onYChange);
+        getMetaMap(doc).unobserve(onYChange);
       };
     }
 
@@ -169,7 +186,10 @@ export function useDiagramSync(opts: {
         });
         providerRef.current = provider;
         provider.on("unsyncedChanges", ({ number }: { number: number }) => setSaved(number === 0));
-        provider.on("synced", () => setSaved(true));
+        provider.on("synced", () => {
+          setSaved(true);
+          hydrateFromDoc(doc);
+        });
         provider.awareness?.setLocalStateField("user", {
           name: opts.user.name ?? opts.user.email ?? "Anonymous",
           color: COLORS[Math.floor(Math.random() * COLORS.length)],
@@ -197,6 +217,7 @@ export function useDiagramSync(opts: {
       cancelled = true;
       getNodeMap(doc).unobserve(onYChange);
       getEdgeMap(doc).unobserve(onYChange);
+      getMetaMap(doc).unobserve(onYChange);
       if (persistTimer.current) clearTimeout(persistTimer.current);
       providerRef.current?.destroy();
       providerRef.current = null;
@@ -249,7 +270,7 @@ export function useDiagramSync(opts: {
         targetHandle: connection.targetHandle,
         type: "labeled",
         animated: false,
-        data: { animated: false },
+        data: { animated: false, lineShape: "bezier" as EdgeLineShape },
       };
       setEdges((current) => {
         const next = [...current, edge];
@@ -285,20 +306,23 @@ export function useDiagramSync(opts: {
   );
 
   const updateEdge = useCallback(
-    (id: string, patch: { label?: string; animated?: boolean }) => {
+    (id: string, patch: { label?: string; animated?: boolean; lineShape?: EdgeLineShape }) => {
       if (readOnly) return;
       setEdges((current) => {
         const next = current.map((edge) => {
           if (edge.id !== id) return edge;
+          const data = (typeof edge.data === "object" && edge.data ? edge.data : {}) as {
+            animated?: boolean;
+            lineShape?: EdgeLineShape;
+          };
           const animated =
-            patch.animated !== undefined
-              ? patch.animated
-              : Boolean((edge.data as { animated?: boolean } | undefined)?.animated ?? edge.animated);
+            patch.animated !== undefined ? patch.animated : Boolean(data.animated ?? edge.animated);
+          const lineShape = patch.lineShape !== undefined ? patch.lineShape : (data.lineShape ?? "bezier");
           return {
             ...edge,
             label: patch.label !== undefined ? patch.label : edge.label,
             animated,
-            data: { ...(typeof edge.data === "object" && edge.data ? edge.data : {}), animated },
+            data: { ...data, animated, lineShape },
           };
         });
         persistLocal(nodesRef.current, next);
@@ -308,15 +332,88 @@ export function useDiagramSync(opts: {
     [persistLocal, readOnly, setEdges],
   );
 
+  const updateMeta = useCallback(
+    (next: DiagramMeta | ((current: DiagramMeta) => DiagramMeta)) => {
+      if (readOnly) return;
+      const resolved = typeof next === "function" ? next(metaRef.current) : next;
+      metaRef.current = resolved;
+      setMetaState(resolved);
+      persistLocal(nodesRef.current, edgesRef.current, resolved);
+    },
+    [persistLocal, readOnly],
+  );
+
+  const upsertTagDef = useCallback(
+    (label: string, color: string) => {
+      updateMeta((current) => {
+        const existing = current.tagDefs.find((item) => item.label === label);
+        if (existing) {
+          return {
+            ...current,
+            tagDefs: current.tagDefs.map((item) =>
+              item.label === label ? { ...item, color } : item,
+            ),
+          };
+        }
+        const def: TagDef = { id: label, label, color };
+        return { ...current, tagDefs: [...current.tagDefs, def] };
+      });
+    },
+    [updateMeta],
+  );
+
+  const upsertFlow = useCallback(
+    (flow: DiagramFlow) => {
+      updateMeta((current) => {
+        const index = current.flows.findIndex((item) => item.id === flow.id);
+        if (index === -1) return { ...current, flows: [...current.flows, flow] };
+        const flows = current.flows.slice();
+        flows[index] = flow;
+        return { ...current, flows };
+      });
+    },
+    [updateMeta],
+  );
+
+  const removeFlow = useCallback(
+    (id: string) => {
+      updateMeta((current) => ({
+        ...current,
+        flows: current.flows.filter((item) => item.id !== id),
+      }));
+    },
+    [updateMeta],
+  );
+
+  const toggleEdgeInFlow = useCallback(
+    (flowId: string, edgeId: string) => {
+      updateMeta((current) => ({
+        ...current,
+        flows: current.flows.map((flow) => {
+          if (flow.id !== flowId) return flow;
+          const has = flow.edgeIds.includes(edgeId);
+          return {
+            ...flow,
+            edgeIds: has ? flow.edgeIds.filter((id) => id !== edgeId) : [...flow.edgeIds, edgeId],
+          };
+        }),
+      }));
+    },
+    [updateMeta],
+  );
+
   const replaceSnapshot = useCallback(
     (snapshot: DiagramSnapshot) => {
       const nextNodes = toFlowNodes(snapshot.nodes);
       const nextEdges = toFlowEdges(snapshot.edges);
+      const nextMeta = snapshot.meta ?? emptyMeta();
       nodesRef.current = nextNodes;
       edgesRef.current = nextEdges;
+      metaRef.current = nextMeta;
       setNodesState(nextNodes);
       setEdgesState(nextEdges);
-      persistLocal(nextNodes, nextEdges);
+      setMetaState(nextMeta);
+      persistLocal(nextNodes, nextEdges, nextMeta);
     },
     [persistLocal],
   );
@@ -349,11 +446,26 @@ export function useDiagramSync(opts: {
       const nextEdges = edgesRef.current.filter(
         (edge) => !remove.has(edge.source) && !remove.has(edge.target),
       );
+      const removedEdgeIds = new Set(
+        edgesRef.current.filter((edge) => remove.has(edge.source) || remove.has(edge.target)).map((e) => e.id),
+      );
+      let nextMeta = metaRef.current;
+      if (removedEdgeIds.size) {
+        nextMeta = {
+          ...metaRef.current,
+          flows: metaRef.current.flows.map((flow) => ({
+            ...flow,
+            edgeIds: flow.edgeIds.filter((id) => !removedEdgeIds.has(id)),
+          })),
+        };
+        metaRef.current = nextMeta;
+        setMetaState(nextMeta);
+      }
       nodesRef.current = nextNodes;
       edgesRef.current = nextEdges;
       setNodesState(nextNodes);
       setEdgesState(nextEdges);
-      persistLocal(nextNodes, nextEdges);
+      persistLocal(nextNodes, nextEdges, nextMeta);
     },
     [persistLocal, readOnly],
   );
@@ -363,9 +475,18 @@ export function useDiagramSync(opts: {
       if (readOnly || !ids.length) return;
       const remove = new Set(ids);
       const nextEdges = edgesRef.current.filter((edge) => !remove.has(edge.id));
+      const nextMeta: DiagramMeta = {
+        ...metaRef.current,
+        flows: metaRef.current.flows.map((flow) => ({
+          ...flow,
+          edgeIds: flow.edgeIds.filter((id) => !remove.has(id)),
+        })),
+      };
       edgesRef.current = nextEdges;
+      metaRef.current = nextMeta;
       setEdgesState(nextEdges);
-      persistLocal(nodesRef.current, nextEdges);
+      setMetaState(nextMeta);
+      persistLocal(nodesRef.current, nextEdges, nextMeta);
     },
     [persistLocal, readOnly],
   );
@@ -426,6 +547,7 @@ export function useDiagramSync(opts: {
   return {
     nodes,
     edges,
+    meta,
     setNodes,
     setEdges,
     onNodesChange,
@@ -434,6 +556,11 @@ export function useDiagramSync(opts: {
     addNode,
     updateNode,
     updateEdge,
+    updateMeta,
+    upsertTagDef,
+    upsertFlow,
+    removeFlow,
+    toggleEdgeInFlow,
     replaceSnapshot,
     commitNodes,
     deleteNodes,
@@ -451,6 +578,7 @@ export function useDiagramSync(opts: {
     snapshot: () => ({
       nodes: flowNodesToDiagram(nodesRef.current),
       edges: flowEdgesToDiagram(edgesRef.current),
+      meta: metaRef.current,
     }),
   };
 }

@@ -46,6 +46,7 @@ export function mergeInheritedPorts(
   return {
     nodes: [...child.nodes, ...ports.filter((port) => !existing.has(port.id))],
     edges: child.edges,
+    meta: child.meta,
   };
 }
 
@@ -74,7 +75,10 @@ export function toFlowEdges(edges: DiagramEdge[]): Edge[] {
     label: edge.label,
     animated: Boolean(edge.animated),
     type: "labeled",
-    data: { animated: Boolean(edge.animated) },
+    data: {
+      animated: Boolean(edge.animated),
+      lineShape: edge.lineShape ?? "bezier",
+    },
   }));
 }
 

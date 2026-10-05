@@ -12,7 +12,9 @@ function subtitleOf(node: DiagramNode) {
 }
 
 function colorOf(node: DiagramNode) {
-  if (node.data.kind === "infra") return nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
+  if (node.data.kind === "infra") {
+    return node.data.accentColor ?? nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
+  }
   return "#818cf8";
 }
 

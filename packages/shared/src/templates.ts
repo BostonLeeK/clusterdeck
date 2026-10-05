@@ -1,4 +1,10 @@
-import type { DiagramSnapshot, InfraNodeData, InfraNodeTypeId } from "./node-types";
+import {
+  createInfraNodeData,
+  emptyMeta,
+  type DiagramSnapshot,
+  type InfraNodeData,
+  type InfraNodeTypeId,
+} from "./node-types";
 
 function infra(
   id: string,
@@ -12,15 +18,7 @@ function infra(
     id,
     type: "infra" as const,
     position: { x, y },
-    data: {
-      kind: "infra" as const,
-      title,
-      typeId,
-      subtitle: extra.subtitle,
-      tags: extra.tags ?? [],
-      status: extra.status ?? "healthy",
-      properties: extra.properties ?? [],
-    },
+    data: createInfraNodeData(typeId, { title, ...extra }),
   };
 }
 
@@ -30,7 +28,7 @@ export const PROJECT_TEMPLATES = [
     name: "Blank diagram",
     description: "Empty canvas to start from scratch.",
     tags: ["empty"],
-    snapshot: { nodes: [], edges: [] } satisfies DiagramSnapshot,
+    snapshot: { nodes: [], edges: [], meta: emptyMeta() } satisfies DiagramSnapshot,
   },
   {
     id: "web-api",
@@ -39,12 +37,37 @@ export const PROJECT_TEMPLATES = [
     tags: ["api", "web"],
     snapshot: {
       nodes: [
-        infra("client", "Web client", "user", 40, 140, { subtitle: "Browser" }),
-        infra("gateway", "API gateway", "api-gateway", 280, 140, { subtitle: "HTTPS · ingress" }),
-        infra("auth", "Auth service", "service", 540, 40, { subtitle: "gRPC · core" }),
-        infra("api", "API service", "service", 540, 220, { subtitle: "REST" }),
-        infra("redis", "Redis", "redis", 800, 40, { subtitle: "Cache" }),
-        infra("db", "PostgreSQL", "postgres", 800, 220, { subtitle: "Primary data" }),
+        infra("client", "Web client", "user", 40, 140, {
+          subtitle: "Browser",
+          displayDescription: "End users in the browser",
+          technologies: ["react"],
+        }),
+        infra("gateway", "API gateway", "api-gateway", 280, 140, {
+          subtitle: "HTTPS · ingress",
+          displayDescription: "Public entrypoint",
+          technologies: ["nginx", "http"],
+          tags: ["edge"],
+        }),
+        infra("auth", "Auth service", "service", 540, 40, {
+          subtitle: "gRPC · core",
+          displayDescription: "Issues JWT sessions",
+          technologies: ["nodejs", "grpc"],
+          tags: ["core"],
+        }),
+        infra("api", "API service", "service", 540, 220, {
+          subtitle: "REST",
+          displayDescription: "Business API",
+          technologies: ["nodejs", "http"],
+          tags: ["core"],
+        }),
+        infra("redis", "Redis", "redis", 800, 40, {
+          subtitle: "Cache",
+          technologies: ["redis"],
+        }),
+        infra("db", "PostgreSQL", "postgres", 800, 220, {
+          subtitle: "Primary data",
+          technologies: ["postgres"],
+        }),
       ],
       edges: [
         { id: "e1", source: "client", target: "gateway", label: "HTTPS", animated: true },
@@ -53,6 +76,20 @@ export const PROJECT_TEMPLATES = [
         { id: "e4", source: "auth", target: "redis", label: "cache" },
         { id: "e5", source: "api", target: "db", label: "SQL" },
       ],
+      meta: {
+        tagDefs: [
+          { id: "edge", label: "edge", color: "#22d3ee" },
+          { id: "core", label: "core", color: "#818cf8" },
+        ],
+        flows: [
+          {
+            id: "auth-login",
+            name: "Login",
+            color: "#34d399",
+            edgeIds: ["e1", "e2", "e4"],
+          },
+        ],
+      },
     } satisfies DiagramSnapshot,
   },
   {
@@ -62,11 +99,28 @@ export const PROJECT_TEMPLATES = [
     tags: ["data", "events"],
     snapshot: {
       nodes: [
-        infra("producer", "Event worker", "lambda", 40, 120, { subtitle: "Producer" }),
-        infra("kafka", "Kafka", "kafka", 300, 120, { subtitle: "Events" }),
-        infra("worker", "Stream worker", "container", 560, 120, { subtitle: "Consumer" }),
-        infra("s3", "S3", "s3", 820, 40, { subtitle: "Lake" }),
-        infra("warehouse", "PostgreSQL", "postgres", 820, 200, { subtitle: "Warehouse" }),
+        infra("producer", "Event worker", "lambda", 40, 120, {
+          subtitle: "Producer",
+          technologies: ["python"],
+        }),
+        infra("kafka", "Kafka", "kafka", 300, 120, {
+          subtitle: "Events",
+          technologies: ["kafka"],
+          tags: ["stream"],
+        }),
+        infra("worker", "Stream worker", "container", 560, 120, {
+          subtitle: "Consumer",
+          technologies: ["go", "docker"],
+          tags: ["stream"],
+        }),
+        infra("s3", "S3", "s3", 820, 40, {
+          subtitle: "Lake",
+          technologies: ["s3"],
+        }),
+        infra("warehouse", "PostgreSQL", "postgres", 820, 200, {
+          subtitle: "Warehouse",
+          technologies: ["postgres"],
+        }),
       ],
       edges: [
         { id: "e1", source: "producer", target: "kafka", label: "events", animated: true },
@@ -74,6 +128,17 @@ export const PROJECT_TEMPLATES = [
         { id: "e3", source: "worker", target: "s3", label: "parquet" },
         { id: "e4", source: "worker", target: "warehouse", label: "SQL" },
       ],
+      meta: {
+        tagDefs: [{ id: "stream", label: "stream", color: "#c084fc" }],
+        flows: [
+          {
+            id: "ingest",
+            name: "Ingest",
+            color: "#22d3ee",
+            edgeIds: ["e1", "e2", "e3"],
+          },
+        ],
+      },
     } satisfies DiagramSnapshot,
   },
   {
@@ -83,13 +148,39 @@ export const PROJECT_TEMPLATES = [
     tags: ["k8s", "prod"],
     snapshot: {
       nodes: [
-        infra("cdn", "edge-cdn", "cdn", 40, 40, { subtitle: "Network" }),
-        infra("lb", "load-balancer", "load-balancer", 280, 40, { subtitle: "ALB" }),
-        infra("gw", "api-gateway", "api-gateway", 520, 40, { subtitle: "Ingress" }),
-        infra("auth", "auth-service", "service", 280, 200, { subtitle: "Service" }),
-        infra("billing", "billing-service", "service", 520, 200, { subtitle: "Service" }),
-        infra("redis", "redis-cache", "redis", 280, 360, { subtitle: "Cache" }),
-        infra("pg", "postgres-main", "postgres", 520, 360, { subtitle: "Database" }),
+        infra("cdn", "edge-cdn", "cdn", 40, 40, {
+          subtitle: "Network",
+          technologies: ["http"],
+          tags: ["edge"],
+        }),
+        infra("lb", "load-balancer", "load-balancer", 280, 40, {
+          subtitle: "ALB",
+          tags: ["edge"],
+        }),
+        infra("gw", "api-gateway", "api-gateway", 520, 40, {
+          subtitle: "Ingress",
+          technologies: ["k8s", "nginx"],
+          tags: ["edge"],
+        }),
+        infra("auth", "auth-service", "service", 280, 200, {
+          subtitle: "Service",
+          technologies: ["nodejs", "grpc"],
+          tags: ["core"],
+          displayDescription: "AuthN / AuthZ",
+        }),
+        infra("billing", "billing-service", "service", 520, 200, {
+          subtitle: "Service",
+          technologies: ["go"],
+          tags: ["core"],
+        }),
+        infra("redis", "redis-cache", "redis", 280, 360, {
+          subtitle: "Cache",
+          technologies: ["redis"],
+        }),
+        infra("pg", "postgres-main", "postgres", 520, 360, {
+          subtitle: "Database",
+          technologies: ["postgres"],
+        }),
       ],
       edges: [
         { id: "e1", source: "cdn", target: "lb", label: "HTTPS" },
@@ -99,6 +190,20 @@ export const PROJECT_TEMPLATES = [
         { id: "e5", source: "auth", target: "redis", label: "cache" },
         { id: "e6", source: "billing", target: "pg", label: "SQL" },
       ],
+      meta: {
+        tagDefs: [
+          { id: "edge", label: "edge", color: "#22d3ee" },
+          { id: "core", label: "core", color: "#818cf8" },
+        ],
+        flows: [
+          {
+            id: "request",
+            name: "Request path",
+            color: "#fbbf24",
+            edgeIds: ["e1", "e2", "e3", "e5"],
+          },
+        ],
+      },
     } satisfies DiagramSnapshot,
   },
 ] as const;
