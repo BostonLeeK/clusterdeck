@@ -58,7 +58,19 @@ export async function registerUser(formData: FormData) {
   }
 
   const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existing?.emailVerified) return { error: "An account with this email already exists." };
+  if (existing?.passwordHash && existing.emailVerified) {
+    return { error: "An account with this email already exists. Sign in instead." };
+  }
+  if (existing?.emailVerified && !existing.passwordHash) {
+    await db
+      .update(users)
+      .set({
+        name: name || existing.name,
+        passwordHash: await hash(password, argon),
+      })
+      .where(eq(users.id, existing.id));
+    return { ok: true as const, needsVerification: false as const, email };
+  }
   if (existing && !existing.emailVerified) {
     await db
       .update(users)
@@ -160,7 +172,7 @@ export async function requestPasswordReset(formData: FormData) {
   if (!email) return { error: "Email is required." };
 
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (user?.passwordHash) {
+  if (user) {
     try {
       if (!emailConfigured()) {
         return { error: "Email is not configured. Set RESEND_API_KEY and EMAIL_FROM." };

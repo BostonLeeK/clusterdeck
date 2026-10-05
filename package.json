@@ -14,6 +14,7 @@
     "db:generate": "pnpm --filter @dataflow/db generate",
     "db:migrate": "pnpm --filter @dataflow/db migrate",
     "db:seed": "pnpm --filter @dataflow/db seed",
+    "db:wipe-users": "pnpm --filter @dataflow/db wipe-users",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",

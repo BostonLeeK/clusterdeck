@@ -46,6 +46,12 @@ Compose builds one app image and runs `migrate` (schema only), `web`, and `realt
 pnpm db:migrate
 ```
 
+Wipe all users (and cascaded projects/memberships):
+
+```bash
+pnpm db:wipe-users -- --yes
+```
+
 Optional demo data: `pnpm db:seed` (login `bohdan@dev` / `password123`).
 
 4. Run web + realtime:
