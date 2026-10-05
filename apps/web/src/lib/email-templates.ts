@@ -54,26 +54,11 @@ function featureCell(kind: "layers" | "bolt" | "grid", title: string, text: stri
 }
 
 function productPreview() {
+  const src = `${appBaseUrl()}/brand/email-preview.jpg`;
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 4px;">
   <tr>
-    <td style="background:#0c0e14;border:1px solid #222833;border-radius:16px;overflow:hidden;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-        <tr>
-          <td width="118" valign="top" style="width:118px;background:#0a0c11;border-right:1px solid #1f2530;padding:18px 14px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;">
-            <div style="color:#f4f4f5;font-size:12px;font-weight:700;margin:0 0 14px;">Workspace</div>
-            <div style="color:#8b93a7;font-size:12px;line-height:2.05;">
-              ▢&nbsp;&nbsp;Nodes<br />
-              ▣&nbsp;&nbsp;Clusters<br />
-              ◎&nbsp;&nbsp;Deployments<br />
-              ⌖&nbsp;&nbsp;Network<br />
-              ⚙&nbsp;&nbsp;Settings
-            </div>
-          </td>
-          <td valign="middle" style="padding:18px 14px;background:#0b1020;">
-            <img src="${escapeHtml(`${appBaseUrl()}/brand/email-diagram.svg`)}" width="420" alt="ClusterDeck diagram" style="display:block;width:100%;max-width:420px;height:auto;border:0;" />
-          </td>
-        </tr>
-      </table>
+    <td style="background:#05070d;border:1px solid #222833;border-radius:16px;overflow:hidden;padding:0;line-height:0;">
+      <img src="${escapeHtml(src)}" width="520" alt="ClusterDeck editor" style="display:block;width:100%;max-width:520px;height:auto;border:0;outline:none;text-decoration:none;" />
     </td>
   </tr>
 </table>`;

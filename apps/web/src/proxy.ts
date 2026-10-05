@@ -17,6 +17,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/resend") ||
     publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   ) {
     const session = await auth();

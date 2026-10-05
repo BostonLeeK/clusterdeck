@@ -336,8 +336,6 @@ export function canShare(role: MemberRole | null | undefined): boolean {
   return role === "owner";
 }
 
-export type WorkspaceRole = "owner" | "admin" | "member";
-
 export function canManageWorkspace(role: WorkspaceRole | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
