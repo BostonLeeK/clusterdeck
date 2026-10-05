@@ -24,7 +24,7 @@ export type InfraNodeTypeId = (typeof NODE_TYPE_IDS)[number];
 
 export type NodeStatus = "healthy" | "degraded" | "unknown" | "offline";
 
-export type DiagramNodeKind = "infra" | "group" | "port";
+export type DiagramNodeKind = "infra" | "group" | "port" | "note";
 
 export type ProjectKind = "personal" | "shared";
 
@@ -72,7 +72,15 @@ export interface PortNodeData {
   [key: string]: unknown;
 }
 
-export type DiagramNodeData = InfraNodeData | GroupNodeData | PortNodeData;
+export interface NoteNodeData {
+  kind: "note";
+  title: string;
+  body?: string;
+  tone?: "text" | "comment";
+  [key: string]: unknown;
+}
+
+export type DiagramNodeData = InfraNodeData | GroupNodeData | PortNodeData | NoteNodeData;
 
 export interface DiagramNode {
   id: string;

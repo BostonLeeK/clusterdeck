@@ -66,6 +66,29 @@ summary {
   cursor: pointer;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(113, 113, 122, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(113, 113, 122, 0.45);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.7);
+}
+
 .react-flow__attribution {
   display: none;
 }
@@ -146,4 +169,89 @@ summary {
   .edge-flow-dot-delayed {
     display: none;
   }
+}
+
+.markdown-body {
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body :where(p, ul, ol, pre, blockquote, table) {
+  margin: 0.55em 0;
+}
+
+.markdown-body :where(h1, h2, h3) {
+  margin: 0.8em 0 0.35em;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.markdown-body h1 {
+  font-size: 1.15rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.05rem;
+}
+
+.markdown-body h3 {
+  font-size: 0.95rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.2rem;
+}
+
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ol {
+  list-style: decimal;
+}
+
+.markdown-body a {
+  color: #a5b4fc;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body code {
+  border-radius: 6px;
+  background: #1c1c1f;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  border-radius: 10px;
+  background: #0c0c0e;
+  padding: 0.75rem;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 2px solid #3f3f46;
+  padding-left: 0.75rem;
+  color: #a1a1aa;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #2a2a2e;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
 }

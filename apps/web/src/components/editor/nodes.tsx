@@ -1,9 +1,9 @@
 "use client";
 
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { Layers } from "lucide-react";
-import type { GroupNodeData, InfraNodeData, NodeStatus, PortNodeData } from "@dataflow/shared";
+import type { GroupNodeData, InfraNodeData, NodeStatus, NoteNodeData, PortNodeData } from "@dataflow/shared";
 import { nodeTypeById } from "@dataflow/shared";
 import { NODE_ICONS } from "@/lib/icons";
 import { cn } from "@/lib/utils";
@@ -76,19 +76,28 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps) 
   return (
     <div
       className={cn(
-        "h-full min-h-48 min-w-[520px] rounded-2xl border bg-[#0f0f12]/70 p-3",
+        "relative h-full min-h-[160px] min-w-[240px] rounded-2xl border bg-[#0f0f12]/80 p-3",
         selected ? "border-indigo-400" : "border-[#2e2e34]",
       )}
     >
-      <div className="flex items-center gap-2">
+      <NodeResizer
+        minWidth={240}
+        minHeight={160}
+        isVisible={selected}
+        lineClassName="border-indigo-400/50"
+        handleClassName="!h-2 !w-2 !border-indigo-400 !bg-[#141416]"
+      />
+      <Handle type="target" position={Position.Left} className="!size-2.5 !border-0 !bg-zinc-500" />
+      <Handle type="source" position={Position.Right} className="!size-2.5 !border-0 !bg-zinc-500" />
+      <div className="pointer-events-none flex items-center gap-2">
         <div className="text-sm font-medium">{node.title}</div>
         <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] text-indigo-300">
           <Layers className="size-3" />
           {node.childCount ?? 0}
         </span>
-        <span className="text-[11px] text-zinc-500">Double-click to open inner diagram</span>
+        <span className="text-[11px] text-zinc-500">Subworkflow</span>
       </div>
-      <div className="mt-0.5 text-[11px] text-zinc-500">{node.subtitle}</div>
+      <div className="pointer-events-none mt-0.5 text-[11px] text-zinc-500">{node.subtitle}</div>
     </div>
   );
 });
@@ -105,6 +114,23 @@ export const PortNode = memo(function PortNode({ data }: NodeProps) {
       {node.direction === "in" ? "← " : "→ "}
       {node.title}
       {node.protocol ? <span className="ml-2 text-zinc-600">{node.protocol}</span> : null}
+    </div>
+  );
+});
+
+export const NoteNode = memo(function NoteNode({ data, selected }: NodeProps) {
+  const node = data as NoteNodeData;
+  const comment = node.tone === "comment";
+  return (
+    <div
+      className={cn(
+        "min-w-[180px] max-w-[260px] rounded-xl border px-3 py-2 text-left shadow-[0_8px_30px_rgba(0,0,0,0.25)]",
+        comment ? "border-amber-500/40 bg-[#2a2214]" : "border-[#2a2a2e] bg-[#141416]",
+        selected && "ring-1 ring-indigo-400/40",
+      )}
+    >
+      <div className={cn("text-[12px] font-medium", comment ? "text-amber-200" : "text-zinc-200")}>{node.title}</div>
+      {node.body ? <div className="mt-1 text-[11px] leading-4 text-zinc-400">{node.body}</div> : null}
     </div>
   );
 });

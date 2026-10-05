@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { PROJECT_TEMPLATES } from "@dataflow/shared";
 import { createProject } from "@/actions/projects";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
@@ -11,13 +12,17 @@ export function CreateProjectButton({
   workspaceId,
   triggerClassName,
   children,
+  defaultTemplate = "blank",
+  openOnMount = false,
 }: {
   workspaceId?: string;
   triggerClassName?: string;
   children: ReactNode;
+  defaultTemplate?: string;
+  openOnMount?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openOnMount);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -26,7 +31,7 @@ export function CreateProjectButton({
       <ModalTrigger asChild>
         <button className={triggerClassName}>{children}</button>
       </ModalTrigger>
-      <ModalContent title="Create new project" description="Start from an empty diagram.">
+      <ModalContent title="Create new project" description="Start from a template or an empty diagram.">
         <form
           className="space-y-3"
           action={async (formData) => {
@@ -54,6 +59,21 @@ export function CreateProjectButton({
           <div className="space-y-1">
             <Label htmlFor="description">Description</Label>
             <Textarea id="description" name="description" placeholder="What does this diagram cover?" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="template">Template</Label>
+            <select
+              id="template"
+              name="template"
+              defaultValue={defaultTemplate}
+              className="h-9 w-full rounded-lg border border-border bg-zinc-950/60 px-3 text-sm"
+            >
+              {PROJECT_TEMPLATES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1">
             <Label htmlFor="kind">Visibility</Label>

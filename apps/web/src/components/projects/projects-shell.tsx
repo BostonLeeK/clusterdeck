@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
-  ChevronDown,
   FileText,
   Folder,
   LayoutGrid,
@@ -19,15 +18,16 @@ import {
   Users,
 } from "lucide-react";
 import { logout } from "@/actions/auth";
-import { createWorkspace, deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
+import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
+import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { timeAgo } from "@/lib/utils";
-import type { DiagramSnapshot } from "@dataflow/shared";
+import { PROJECT_TEMPLATES, type DiagramSnapshot } from "@dataflow/shared";
 
 type ProjectCard = {
   id: string;
@@ -47,22 +47,30 @@ export function ProjectsShell({
   workspaces,
   projects,
   filter,
+  workspaceId,
 }: {
   user: { name?: string | null; email?: string | null; image?: string | null };
   workspaces: { id: string; name: string }[];
   projects: ProjectCard[];
   filter: string;
+  workspaceId?: string;
 }) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const view = params.get("view") === "list" ? "list" : "grid";
-  const workspaceId = workspaces[0]?.id;
-  const activeFilter = filter === "trash" ? "all" : filter;
+  const activeFilter = filter === "trash" || filter === "templates" || filter === "team" ? "all" : filter;
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
     next.set(key, value);
+    router.push(`${pathname}?${next.toString()}`);
+  }
+
+  function selectWorkspace(id: string) {
+    const next = new URLSearchParams(params);
+    next.set("workspace", id);
+    next.set("filter", "team");
     router.push(`${pathname}?${next.toString()}`);
   }
 
@@ -72,10 +80,7 @@ export function ProjectsShell({
         <div className="px-2 py-1">
           <Logo />
         </div>
-        <button className="mt-5 mb-4 flex h-10 items-center justify-between rounded-xl border border-[#232326] bg-[#141416] px-3 text-sm">
-          <span>{workspaces[0]?.name ?? "Personal"}</span>
-          <ChevronDown className="size-4 text-zinc-500" />
-        </button>
+        <WorkspaceSwitcher workspaces={workspaces} workspaceId={workspaceId} onSelect={selectWorkspace} />
         <nav className="space-y-0.5 text-[13px] text-zinc-400">
           <Nav href="/projects?filter=all" active={filter === "all"} icon={<Folder className="size-4" />}>
             My projects
@@ -83,10 +88,14 @@ export function ProjectsShell({
           <Nav href="/projects?filter=shared" active={filter === "shared"} icon={<UserPlus className="size-4" />}>
             Shared with me
           </Nav>
-          <Nav href="/projects?filter=all" active={false} icon={<Users className="size-4" />}>
+          <Nav
+            href={`/projects?filter=team${workspaceId ? `&workspace=${workspaceId}` : ""}`}
+            active={filter === "team"}
+            icon={<Users className="size-4" />}
+          >
             Team projects
           </Nav>
-          <Nav href="/projects" active={false} icon={<FileText className="size-4" />}>
+          <Nav href="/projects?filter=templates" active={filter === "templates"} icon={<FileText className="size-4" />}>
             Templates
           </Nav>
           <Nav href="/projects?filter=trash" active={filter === "trash"} icon={<Trash2 className="size-4" />}>
@@ -105,14 +114,6 @@ export function ProjectsShell({
               </button>
             </MenuTrigger>
             <MenuContent>
-              <MenuItem
-                onSelect={() => {
-                  const name = window.prompt("Workspace name");
-                  if (name) void createWorkspace(name);
-                }}
-              >
-                New workspace
-              </MenuItem>
               <MenuItem onSelect={() => logout()}>Sign out</MenuItem>
             </MenuContent>
           </Menu>
@@ -137,14 +138,21 @@ export function ProjectsShell({
           </div>
           <div className="ml-auto flex items-center gap-2">
             <CreateProjectButton
-              workspaceId={workspaceId}
+              workspaceId={filter === "team" ? workspaceId : undefined}
               triggerClassName="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#7b79ff]"
             >
               <Plus className="size-4" /> New project
             </CreateProjectButton>
-            <button className="grid size-10 place-items-center rounded-xl text-zinc-400 hover:bg-white/5">
-              <Bell className="size-4" />
-            </button>
+            <Menu>
+              <MenuTrigger asChild>
+                <button className="grid size-10 place-items-center rounded-xl text-zinc-400 hover:bg-white/5">
+                  <Bell className="size-4" />
+                </button>
+              </MenuTrigger>
+              <MenuContent>
+                <div className="px-2 py-3 text-sm text-zinc-500">No notifications</div>
+              </MenuContent>
+            </Menu>
           </div>
         </header>
 
@@ -196,7 +204,31 @@ export function ProjectsShell({
           </div>
 
           <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
-            {projects.map((project) => (
+            {filter === "templates"
+              ? PROJECT_TEMPLATES.map((template) => (
+                  <article key={template.id} className="rounded-2xl border border-[#232326] bg-[#141416] p-4">
+                    <div className="rounded-xl bg-[#0c0c0e] px-2 pt-2">
+                      <DiagramPreview snapshot={template.snapshot} />
+                    </div>
+                    <h2 className="mt-3 text-[15px] font-medium">{template.name}</h2>
+                    <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{template.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {template.tags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <CreateProjectButton
+                      workspaceId={workspaceId}
+                      defaultTemplate={template.id}
+                      triggerClassName="mt-4 inline-flex h-9 w-full items-center justify-center rounded-xl border border-[#2a2a2e] text-sm text-zinc-200 hover:bg-white/5"
+                    >
+                      Use template
+                    </CreateProjectButton>
+                  </article>
+                ))
+              : projects.map((project) => (
               <article
                 key={project.id}
                 className="rounded-2xl border border-[#232326] bg-[#141416] p-4"
@@ -263,9 +295,9 @@ export function ProjectsShell({
                 </div>
               </article>
             ))}
-            {filter !== "trash" ? (
+            {filter !== "trash" && filter !== "templates" ? (
               <CreateProjectButton
-                workspaceId={workspaceId}
+                workspaceId={filter === "team" ? workspaceId : undefined}
                 triggerClassName="flex min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#2a2a2e] text-zinc-500 hover:bg-white/[0.02]"
               >
                 <span className="mb-3 grid size-14 place-items-center rounded-full border border-[#2a2a2e]">

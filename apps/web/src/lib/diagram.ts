@@ -55,11 +55,12 @@ export function toFlowNodes(nodes: DiagramNode[]): Node[] {
     type: node.type,
     position: node.position,
     parentId: node.parentId,
-    extent: node.extent,
+    extent: node.parentId ? "parent" : node.extent,
     style: node.width || node.height ? { width: node.width, height: node.height } : undefined,
     data: node.data as unknown as Record<string, unknown>,
     width: node.width,
     height: node.height,
+    zIndex: node.type === "group" ? -1 : undefined,
   }));
 }
 
@@ -85,17 +86,200 @@ export function fromFlowNode(node: {
   data: DiagramNode["data"];
   width?: number | null;
   height?: number | null;
+  style?: { width?: number | string; height?: number | string };
+  measured?: { width?: number; height?: number };
 }): DiagramNode {
+  const width =
+    node.width ??
+    (typeof node.style?.width === "number" ? node.style.width : undefined) ??
+    node.measured?.width;
+  const height =
+    node.height ??
+    (typeof node.style?.height === "number" ? node.style.height : undefined) ??
+    node.measured?.height;
   return {
     id: node.id,
     type: (node.type as DiagramNode["type"]) ?? "infra",
     position: node.position,
     parentId: node.parentId,
     extent: node.parentId ? "parent" : undefined,
-    width: node.width ?? undefined,
-    height: node.height ?? undefined,
+    width,
+    height,
     data: node.data as DiagramNode["data"],
   };
+}
+
+function nodeSize(node: Node) {
+  const width =
+    (typeof node.style?.width === "number" ? node.style.width : undefined) ??
+    node.width ??
+    node.measured?.width ??
+    (node.type === "group" ? 520 : 220);
+  const height =
+    (typeof node.style?.height === "number" ? node.style.height : undefined) ??
+    node.height ??
+    node.measured?.height ??
+    (node.type === "group" ? 280 : 80);
+  return { width, height };
+}
+
+function absolutePosition(node: Node, byId: Map<string, Node>) {
+  let x = node.position.x;
+  let y = node.position.y;
+  let parent = node.parentId ? byId.get(node.parentId) : undefined;
+  while (parent) {
+    x += parent.position.x;
+    y += parent.position.y;
+    parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+  }
+  return { x, y };
+}
+
+export function groupSelectedNodes(nodes: Node[]): Node[] | null {
+  const selected = nodes.filter((node) => node.selected && node.type !== "port");
+  if (selected.length < 1) return null;
+  if (selected.length === 1 && selected[0]?.type === "group") return null;
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const selectedIds = new Set(selected.map((node) => node.id));
+  const wrap = selected.filter((node) => {
+    let parentId = node.parentId;
+    while (parentId) {
+      if (selectedIds.has(parentId)) return false;
+      parentId = byId.get(parentId)?.parentId;
+    }
+    return true;
+  });
+  if (!wrap.length) return null;
+
+  const parentIds = new Set(wrap.map((node) => node.parentId ?? ""));
+  const commonParent = parentIds.size === 1 ? wrap[0]?.parentId : undefined;
+  const parentAbs = commonParent && byId.get(commonParent) ? absolutePosition(byId.get(commonParent)!, byId) : { x: 0, y: 0 };
+
+  const boxes = wrap.map((node) => {
+    const abs = absolutePosition(node, byId);
+    const size = nodeSize(node);
+    return { node, abs, size };
+  });
+  const paddingX = 40;
+  const paddingTop = 52;
+  const paddingBottom = 32;
+  const minX = Math.min(...boxes.map((box) => box.abs.x)) - paddingX;
+  const minY = Math.min(...boxes.map((box) => box.abs.y)) - paddingTop;
+  const maxX = Math.max(...boxes.map((box) => box.abs.x + box.size.width)) + paddingX;
+  const maxY = Math.max(...boxes.map((box) => box.abs.y + box.size.height)) + paddingBottom;
+  const width = Math.max(280, maxX - minX);
+  const height = Math.max(180, maxY - minY);
+  const groupId = crypto.randomUUID();
+  const wrapIds = new Set(wrap.map((node) => node.id));
+
+  const group: Node = {
+    id: groupId,
+    type: "group",
+    position: { x: minX - parentAbs.x, y: minY - parentAbs.y },
+    parentId: commonParent,
+    extent: commonParent ? "parent" : undefined,
+    width,
+    height,
+    style: { width, height },
+    selected: true,
+    zIndex: -1,
+    data: {
+      kind: "group",
+      title: "Subworkflow",
+      tags: [],
+      childCount: wrap.length,
+    },
+  };
+
+  return withGroupCounts([
+    group,
+    ...nodes.map((node) => {
+      if (!wrapIds.has(node.id)) return { ...node, selected: false };
+      const abs = absolutePosition(node, byId);
+      return {
+        ...node,
+        parentId: groupId,
+        extent: "parent" as const,
+        position: { x: abs.x - minX, y: abs.y - minY },
+        selected: false,
+      };
+    }),
+  ]);
+}
+
+export function ungroupNode(nodes: Node[], groupId: string): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const group = byId.get(groupId);
+  if (!group || group.type !== "group") return nodes;
+  const groupAbs = absolutePosition(group, byId);
+  const nextParent = group.parentId;
+  const parentAbs = nextParent && byId.get(nextParent) ? absolutePosition(byId.get(nextParent)!, byId) : { x: 0, y: 0 };
+
+  return withGroupCounts(
+    nodes
+      .filter((node) => node.id !== groupId)
+      .map((node) => {
+        if (node.parentId !== groupId) return node;
+        return {
+          ...node,
+          parentId: nextParent,
+          extent: nextParent ? ("parent" as const) : undefined,
+          position: {
+            x: groupAbs.x + node.position.x - parentAbs.x,
+            y: groupAbs.y + node.position.y - parentAbs.y,
+          },
+          selected: true,
+        };
+      }),
+  );
+}
+
+export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string | null): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const node = byId.get(nodeId);
+  if (!node || nodeId === groupId) return nodes;
+  if (groupId) {
+    let parent: Node | undefined = byId.get(groupId);
+    while (parent) {
+      if (parent.id === nodeId) return nodes;
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+  }
+  const abs = absolutePosition(node, byId);
+  if (!groupId) {
+    return withGroupCounts(
+      nodes.map((item) =>
+        item.id === nodeId ? { ...item, parentId: undefined, extent: undefined, position: abs } : item,
+      ),
+    );
+  }
+  const group = byId.get(groupId);
+  if (!group) return nodes;
+  const groupAbs = absolutePosition(group, byId);
+  return withGroupCounts(
+    nodes.map((item) =>
+      item.id === nodeId
+        ? {
+            ...item,
+            parentId: groupId,
+            extent: "parent" as const,
+            position: { x: abs.x - groupAbs.x, y: abs.y - groupAbs.y },
+          }
+        : item,
+    ),
+  );
+}
+
+function withGroupCounts(nodes: Node[]): Node[] {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.parentId) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
+  }
+  return nodes.map((node) => {
+    if (node.type !== "group") return node;
+    return { ...node, data: { ...node.data, childCount: counts.get(node.id) ?? 0 } };
+  });
 }
 
 export function childCountOf(data: InfraNodeData | undefined, snapshot: DiagramSnapshot) {

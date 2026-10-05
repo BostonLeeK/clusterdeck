@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { eq } from "drizzle-orm";
 import { db, diagrams, projectMembers, projectTags, projects, workspaceMembers, workspaces } from "@dataflow/db";
-import { emptySnapshot } from "@dataflow/shared";
+import { emptySnapshot, templateById } from "@dataflow/shared";
 import { requireUser } from "@/lib/queries";
 
 export async function createProject(formData: FormData) {
@@ -14,6 +14,10 @@ export async function createProject(formData: FormData) {
     const description = String(formData.get("description") ?? "");
     const kind = formData.get("kind") === "shared" ? "shared" : "personal";
     const workspaceId = String(formData.get("workspaceId") ?? "") || null;
+    const template = templateById(String(formData.get("template") ?? ""));
+    const snapshot = template
+      ? structuredClone(template.snapshot)
+      : emptySnapshot();
     const [project] = await db
       .insert(projects)
       .values({
@@ -28,7 +32,7 @@ export async function createProject(formData: FormData) {
     await db.insert(projectMembers).values({ projectId: project.id, userId: user.id, role: "owner" });
     const [diagram] = await db
       .insert(diagrams)
-      .values({ projectId: project.id, name, snapshot: emptySnapshot() })
+      .values({ projectId: project.id, name, snapshot })
       .returning();
     const tags = String(formData.get("tags") ?? "")
       .split(",")
@@ -70,14 +74,21 @@ export async function deleteProjectForever(projectId: string) {
 }
 
 export async function createWorkspace(name: string) {
-  const user = await requireUser();
-  const [workspace] = await db.insert(workspaces).values({ name }).returning();
-  if (!workspace) throw new Error("failed");
-  await db.insert(workspaceMembers).values({
-    workspaceId: workspace.id,
-    userId: user.id!,
-    role: "owner",
-  });
-  revalidatePath("/projects");
-  return workspace.id;
+  try {
+    const user = await requireUser();
+    const trimmed = name.trim();
+    if (!trimmed) return { error: "Name is required." };
+    const [workspace] = await db.insert(workspaces).values({ name: trimmed }).returning();
+    if (!workspace) return { error: "Failed to create team." };
+    await db.insert(workspaceMembers).values({
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: "owner",
+    });
+    revalidatePath("/projects");
+    return { id: workspace.id };
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    return { error: "Failed to create team." };
+  }
 }

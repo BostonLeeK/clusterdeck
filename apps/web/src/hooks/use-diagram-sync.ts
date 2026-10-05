@@ -321,6 +321,95 @@ export function useDiagramSync(opts: {
     [persistLocal],
   );
 
+  const commitNodes = useCallback(
+    (next: Node[]) => {
+      if (readOnly) return;
+      nodesRef.current = next;
+      setNodesState(next);
+      persistLocal(next, edgesRef.current);
+    },
+    [persistLocal, readOnly],
+  );
+
+  const deleteNodes = useCallback(
+    (ids: string[]) => {
+      if (readOnly || !ids.length) return;
+      const remove = new Set(ids);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const node of nodesRef.current) {
+          if (node.parentId && remove.has(node.parentId) && !remove.has(node.id)) {
+            remove.add(node.id);
+            grew = true;
+          }
+        }
+      }
+      const nextNodes = nodesRef.current.filter((node) => !remove.has(node.id));
+      const nextEdges = edgesRef.current.filter(
+        (edge) => !remove.has(edge.source) && !remove.has(edge.target),
+      );
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      persistLocal(nextNodes, nextEdges);
+    },
+    [persistLocal, readOnly],
+  );
+
+  const deleteEdges = useCallback(
+    (ids: string[]) => {
+      if (readOnly || !ids.length) return;
+      const remove = new Set(ids);
+      const nextEdges = edgesRef.current.filter((edge) => !remove.has(edge.id));
+      edgesRef.current = nextEdges;
+      setEdgesState(nextEdges);
+      persistLocal(nodesRef.current, nextEdges);
+    },
+    [persistLocal, readOnly],
+  );
+
+  const duplicateNodes = useCallback(
+    (ids: string[]) => {
+      if (readOnly || !ids.length) return;
+      const selected = new Set(ids);
+      const sourceNodes = nodesRef.current.filter((node) => selected.has(node.id));
+      if (!sourceNodes.length) return;
+      const idMap = new Map(sourceNodes.map((node) => [node.id, crypto.randomUUID()]));
+      const clones = sourceNodes.map((node) => ({
+        ...node,
+        id: idMap.get(node.id)!,
+        selected: true,
+        parentId: node.parentId && idMap.has(node.parentId) ? idMap.get(node.parentId) : node.parentId,
+        position: { x: node.position.x + 40, y: node.position.y + 40 },
+        data: structuredClone(node.data),
+      }));
+      const nextNodes = [
+        ...nodesRef.current.map((node) => ({ ...node, selected: false })),
+        ...clones,
+      ];
+      const nextEdges = [
+        ...edgesRef.current.map((edge) => ({ ...edge, selected: false })),
+        ...edgesRef.current
+          .filter((edge) => selected.has(edge.source) && selected.has(edge.target))
+          .map((edge) => ({
+            ...edge,
+            id: crypto.randomUUID(),
+            source: idMap.get(edge.source)!,
+            target: idMap.get(edge.target)!,
+            selected: false,
+          })),
+      ];
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      persistLocal(nextNodes, nextEdges);
+    },
+    [persistLocal, readOnly],
+  );
+
   const setCursor = useCallback((x: number, y: number) => {
     const now = Date.now();
     if (now - cursorTimer.current < 40) return;
@@ -346,6 +435,10 @@ export function useDiagramSync(opts: {
     updateNode,
     updateEdge,
     replaceSnapshot,
+    commitNodes,
+    deleteNodes,
+    deleteEdges,
+    duplicateNodes,
     saved,
     presence,
     role,

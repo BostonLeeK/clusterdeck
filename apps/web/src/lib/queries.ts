@@ -68,15 +68,19 @@ export async function listWorkspaces(userId: string) {
 
 export async function listProjects(opts: {
   userId: string;
-  filter: "all" | "personal" | "shared" | "trash";
+  filter: "all" | "personal" | "shared" | "team" | "trash";
   query?: string;
   sort?: "updated" | "name";
+  workspaceId?: string;
 }) {
   const conditions = [or(eq(projects.ownerId, opts.userId), eq(projectMembers.userId, opts.userId))];
   if (opts.filter === "trash") conditions.push(isNotNull(projects.deletedAt));
   else conditions.push(isNull(projects.deletedAt));
   if (opts.filter === "personal") conditions.push(eq(projects.kind, "personal"));
   if (opts.filter === "shared") conditions.push(eq(projects.kind, "shared"));
+  if (opts.filter === "team" || opts.workspaceId) {
+    conditions.push(opts.workspaceId ? eq(projects.workspaceId, opts.workspaceId) : isNotNull(projects.workspaceId));
+  }
   if (opts.query) {
     conditions.push(
       or(ilike(projects.name, `%${opts.query}%`), ilike(projects.description, `%${opts.query}%`)),

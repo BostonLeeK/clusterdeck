@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Background,
@@ -30,16 +30,24 @@ import { nodeTypeById } from "@dataflow/shared";
 import { openOrCreateInnerDiagram } from "@/actions/diagrams";
 import { ExportMenu } from "@/components/editor/export-menu";
 import { LabeledEdge } from "@/components/editor/labeled-edge";
-import { GroupNode, InfraNode, PortNode } from "@/components/editor/nodes";
+import { GroupNode, InfraNode, NoteNode, PortNode } from "@/components/editor/nodes";
 import { EdgeDetails } from "@/components/editor/edge-details";
 import { NodeDetails } from "@/components/editor/node-details";
 import { NodeLibrary } from "@/components/editor/node-library";
 import { Outline } from "@/components/editor/outline";
 import { ShareDialog } from "@/components/editor/share-dialog";
+import {
+  CanvasContextMenu,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  type CanvasMenuState,
+} from "@/components/editor/canvas-context-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
+import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
 
-const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode };
+const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode, note: NoteNode };
 const edgeTypes = { labeled: LabeledEdge };
 
 type Member = {
@@ -73,7 +81,10 @@ export function EditorApp(props: {
 function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const router = useRouter();
   const wrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, zoomIn, zoomOut, getZoom, getIntersectingNodes } = useReactFlow();
+  const [tool, setTool] = useState<"select" | "pan">("select");
+  const [zoom, setZoom] = useState(1);
+  const [menu, setMenu] = useState<CanvasMenuState | null>(null);
   const sync = useDiagramSync({
     diagramId: props.diagramId,
     initial: props.snapshot,
@@ -85,21 +96,40 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const selectedEdge = sync.selectedEdge;
   const connections = useMemo(() => {
     if (!selected) return { incoming: [], outgoing: [] };
-    return {
-      incoming: sync.edges.filter((edge) => edge.target === selected.id).map((edge) => edge.source),
-      outgoing: sync.edges.filter((edge) => edge.source === selected.id).map((edge) => edge.target),
+    const titleOf = (id: string) => {
+      const node = sync.nodes.find((item) => item.id === id);
+      const data = node?.data as { title?: string } | undefined;
+      return data?.title ?? id;
     };
-  }, [selected, sync.edges]);
+    return {
+      incoming: sync.edges
+        .filter((edge) => edge.target === selected.id)
+        .map((edge) => ({
+          id: edge.source,
+          title: titleOf(edge.source),
+          label: typeof edge.label === "string" ? edge.label : undefined,
+        })),
+      outgoing: sync.edges
+        .filter((edge) => edge.source === selected.id)
+        .map((edge) => ({
+          id: edge.target,
+          title: titleOf(edge.target),
+          label: typeof edge.label === "string" ? edge.label : undefined,
+        })),
+    };
+  }, [selected, sync.edges, sync.nodes]);
 
   const setNodes = sync.setNodes;
   const setEdges = sync.setEdges;
 
   const selectNodeOnly = useCallback(
-    (nodeId: string) => {
+    (nodeId: string, focus = false) => {
       setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
       setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+      if (!focus) return;
+      void fitView({ nodes: [{ id: nodeId }], padding: 0.45, duration: 220, maxZoom: Math.max(getZoom(), 1) });
     },
-    [setEdges, setNodes],
+    [fitView, getZoom, setEdges, setNodes],
   );
 
   const selectEdgeOnly = useCallback(
@@ -132,11 +162,101 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     [addNode],
   );
 
-  const openInner = useCallback(async () => {
-    if (!selected || selected.type !== "infra") return;
-    const result = await openOrCreateInnerDiagram(props.diagramId, selected.id);
-    router.push(`/editor/${props.projectId}/${result.diagramId}`);
-  }, [props.diagramId, props.projectId, router, selected]);
+  const addNote = useCallback(
+    (tone: "text" | "comment", position?: { x: number; y: number }) => {
+      if (sync.readOnly) return;
+      const nextPosition =
+        position ??
+        screenToFlowPosition({
+          x:
+            (wrapper.current?.getBoundingClientRect().width ?? 400) / 2 +
+            (wrapper.current?.getBoundingClientRect().left ?? 0),
+          y:
+            (wrapper.current?.getBoundingClientRect().height ?? 300) / 2 +
+            (wrapper.current?.getBoundingClientRect().top ?? 0),
+        });
+      addNode({
+        id: crypto.randomUUID(),
+        type: "note",
+        position: nextPosition,
+        data: {
+          kind: "note",
+          title: tone === "comment" ? "Comment" : "Text",
+          body: "",
+          tone,
+        },
+      });
+    },
+    [addNode, screenToFlowPosition, sync.readOnly],
+  );
+
+  const groupSelection = useCallback(() => {
+    if (sync.readOnly) return;
+    const selectedNodes = sync.nodes.filter((node) => node.selected);
+    if (selectedNodes.length === 1 && selectedNodes[0]?.type === "group") {
+      sync.commitNodes(ungroupNode(sync.nodes, selectedNodes[0].id));
+      return;
+    }
+    const grouped = groupSelectedNodes(sync.nodes);
+    if (grouped) {
+      sync.commitNodes(grouped);
+      return;
+    }
+    addNode({
+      id: crypto.randomUUID(),
+      type: "group",
+      position: { x: 120, y: 120 },
+      width: 520,
+      height: 280,
+      data: { kind: "group", title: "Subworkflow", tags: [], childCount: 0 },
+    });
+  }, [addNode, sync]);
+
+  const ungroupSelection = useCallback(() => {
+    if (sync.readOnly) return;
+    const group = sync.nodes.find((node) => node.selected && node.type === "group");
+    if (!group) return;
+    sync.commitNodes(ungroupNode(sync.nodes, group.id));
+  }, [sync]);
+
+  const openInner = useCallback(
+    async (nodeId?: string) => {
+      const id = nodeId ?? selected?.id;
+      const node = sync.nodes.find((item) => item.id === id);
+      if (!node || node.type !== "infra") return;
+      const result = await openOrCreateInnerDiagram(props.diagramId, node.id);
+      router.push(`/editor/${props.projectId}/${result.diagramId}`);
+    },
+    [props.diagramId, props.projectId, router, selected?.id, sync.nodes],
+  );
+
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const deleteSelection = useCallback(() => {
+    if (sync.readOnly) return;
+    const nodeIds = sync.nodes.filter((node) => node.selected).map((node) => node.id);
+    const edgeIds = sync.edges.filter((edge) => edge.selected).map((edge) => edge.id);
+    if (nodeIds.length) sync.deleteNodes(nodeIds);
+    if (edgeIds.length) sync.deleteEdges(edgeIds);
+  }, [sync]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "g") return;
+      event.preventDefault();
+      if (event.shiftKey) ungroupSelection();
+      else groupSelection();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteSelection, groupSelection, ungroupSelection]);
 
   const onPaneMouseMove = useCallback(
     (event: MouseEvent) => {
@@ -209,29 +329,17 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           <Outline
             nodes={sync.nodes}
             selectedId={selected?.id}
-            onSelect={selectNodeOnly}
+            onSelect={(id) => selectNodeOnly(id, true)}
           />
         </aside>
         <div className="relative min-w-0 flex-1" ref={wrapper}>
           <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
-            <Tool icon={<MousePointer2 className="size-4" />} />
-            <Tool icon={<Hand className="size-4" />} />
-            <Tool icon={<Plus className="size-4" />} />
-            <Tool
-              icon={<Square className="size-4" />}
-              onClick={() =>
-                sync.addNode({
-                  id: crypto.randomUUID(),
-                  type: "group",
-                  position: { x: 120, y: 120 },
-                  width: 520,
-                  height: 280,
-                  data: { kind: "group", title: "Group", tags: [] },
-                })
-              }
-            />
-            <Tool icon={<Type className="size-4" />} />
-            <Tool icon={<MessageSquare className="size-4" />} />
+            <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
+            <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
+            <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
+            <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
+            <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
+            <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
           </div>
           {props.insideLabel ? (
             <div className="absolute top-3 left-16 z-10 inline-flex items-center gap-2 rounded-full border border-[#2a2a2e] bg-[#141416] px-3 py-1 text-xs text-zinc-300">
@@ -246,11 +354,73 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             onNodesChange={sync.onNodesChange}
             onEdgesChange={sync.onEdgesChange}
             onConnect={sync.onConnect}
-            onNodeClick={(_, node) => selectNodeOnly(node.id)}
-            onEdgeClick={(_, edge) => selectEdgeOnly(edge.id)}
+            onNodeClick={(event, node) => {
+              setMenu(null);
+              if (event.shiftKey) {
+                setNodes((current) =>
+                  current.map((item) => (item.id === node.id ? { ...item, selected: !item.selected } : item)),
+                );
+                setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+                return;
+              }
+              selectNodeOnly(node.id);
+            }}
+            onNodeDragStop={(_, node) => {
+              if (sync.readOnly || node.type === "group") return;
+              const hits = getIntersectingNodes(node).filter(
+                (item) => item.type === "group" && item.id !== node.id,
+              );
+              const target = hits.sort((a, b) => {
+                const aArea = (a.width ?? 1) * (a.height ?? 1);
+                const bArea = (b.width ?? 1) * (b.height ?? 1);
+                return aArea - bArea;
+              })[0];
+              if (target && target.id !== node.parentId) {
+                sync.commitNodes(attachNodeToGroup(sync.nodes, node.id, target.id));
+                return;
+              }
+              if (node.parentId && !hits.some((item) => item.id === node.parentId)) {
+                sync.commitNodes(attachNodeToGroup(sync.nodes, node.id, null));
+              }
+            }}
+            onEdgeClick={(_, edge) => {
+              setMenu(null);
+              selectEdgeOnly(edge.id);
+            }}
             onPaneClick={() => {
+              setMenu(null);
               setNodes((current) => current.map((node) => ({ ...node, selected: false })));
               setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+            }}
+            onPaneContextMenu={(event) => {
+              event.preventDefault();
+              setMenu({
+                kind: "pane",
+                clientX: event.clientX,
+                clientY: event.clientY,
+                flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+              });
+            }}
+            onNodeContextMenu={(event, node) => {
+              event.preventDefault();
+              if (!node.selected) selectNodeOnly(node.id);
+              setMenu({
+                kind: "node",
+                clientX: event.clientX,
+                clientY: event.clientY,
+                nodeId: node.id,
+                nodeType: node.type,
+              });
+            }}
+            onEdgeContextMenu={(event, edge) => {
+              event.preventDefault();
+              selectEdgeOnly(edge.id);
+              setMenu({
+                kind: "edge",
+                clientX: event.clientX,
+                clientY: event.clientY,
+                edgeId: edge.id,
+              });
             }}
             onPaneMouseMove={onPaneMouseMove}
             onDrop={(event) => {
@@ -267,9 +437,13 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               if (node.type === "infra") void openInner();
             }}
             fitView
-            nodesDraggable={!sync.readOnly}
+            panOnDrag={tool === "pan"}
+            selectionOnDrag={tool === "select"}
+            nodesDraggable={!sync.readOnly && tool === "select"}
             nodesConnectable={!sync.readOnly}
-            elementsSelectable
+            elementsSelectable={tool === "select"}
+            onMoveEnd={() => setZoom(getZoom())}
+            onInit={(instance) => setZoom(instance.getZoom())}
             proOptions={{ hideAttribution: true }}
             className="bg-[#0b0b0d]"
             defaultEdgeOptions={{ type: "labeled", style: { stroke: "#52525b", strokeWidth: 1.4 } }}
@@ -283,6 +457,162 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             />
             <Controls showInteractive={false} />
           </ReactFlow>
+          <CanvasContextMenu menu={menu} onClose={closeMenu}>
+            {menu?.kind === "pane" ? (
+              <>
+                <ContextMenuLabel>Canvas</ContextMenuLabel>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    createNode("service", menu.flow);
+                    closeMenu();
+                  }}
+                >
+                  Add service
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    addNode({
+                      id: crypto.randomUUID(),
+                      type: "group",
+                      position: menu.flow,
+                      width: 520,
+                      height: 280,
+                      data: { kind: "group", title: "Subworkflow", tags: [], childCount: 0 },
+                    });
+                    closeMenu();
+                  }}
+                >
+                  Add subworkflow
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    addNote("text", menu.flow);
+                    closeMenu();
+                  }}
+                >
+                  Add text
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    addNote("comment", menu.flow);
+                    closeMenu();
+                  }}
+                >
+                  Add comment
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onSelect={() => {
+                    fitView({ duration: 220 });
+                    closeMenu();
+                  }}
+                >
+                  Fit to screen
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onSelect={() => {
+                    setNodes((current) => current.map((node) => ({ ...node, selected: true })));
+                    closeMenu();
+                  }}
+                >
+                  Select all
+                </ContextMenuItem>
+              </>
+            ) : null}
+            {menu?.kind === "node" ? (
+              <>
+                <ContextMenuLabel>Node</ContextMenuLabel>
+                {menu.nodeType === "infra" ? (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      void openInner(menu.nodeId);
+                      closeMenu();
+                    }}
+                  >
+                    Open inner diagram
+                  </ContextMenuItem>
+                ) : null}
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    sync.duplicateNodes([menu.nodeId]);
+                    closeMenu();
+                  }}
+                >
+                  Duplicate
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    selectNodeOnly(menu.nodeId);
+                    groupSelection();
+                    closeMenu();
+                  }}
+                  shortcut="⌘G"
+                >
+                  {menu.nodeType === "group" ? "Unpack subworkflow" : "Group selection"}
+                </ContextMenuItem>
+                {menu.nodeType === "group" ? (
+                  <ContextMenuItem
+                    disabled={sync.readOnly}
+                    onSelect={() => {
+                      sync.commitNodes(ungroupNode(sync.nodes, menu.nodeId));
+                      closeMenu();
+                    }}
+                    shortcut="⇧⌘G"
+                  >
+                    Unpack here
+                  </ContextMenuItem>
+                ) : null}
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  danger
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    sync.deleteNodes([menu.nodeId]);
+                    closeMenu();
+                  }}
+                  shortcut="⌫"
+                >
+                  Delete
+                </ContextMenuItem>
+              </>
+            ) : null}
+            {menu?.kind === "edge" ? (
+              <>
+                <ContextMenuLabel>Connection</ContextMenuLabel>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    const edge = sync.edges.find((item) => item.id === menu.edgeId);
+                    const animated = Boolean(
+                      (edge?.data as { animated?: boolean } | undefined)?.animated ?? edge?.animated,
+                    );
+                    sync.updateEdge(menu.edgeId, { animated: !animated });
+                    closeMenu();
+                  }}
+                >
+                  Toggle data flow
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  danger
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    sync.deleteEdges([menu.edgeId]);
+                    closeMenu();
+                  }}
+                  shortcut="⌫"
+                >
+                  Delete
+                </ContextMenuItem>
+              </>
+            ) : null}
+          </CanvasContextMenu>
           {sync.presence.map((user) =>
             user.cursor ? (
               <div
@@ -301,11 +631,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             {sync.readOnly ? " · View only" : ""}
           </div>
           <div className="absolute right-4 bottom-4 z-10 flex items-center gap-1 rounded-xl border border-[#2a2a2e] bg-[#141416] px-1 py-1 text-xs text-zinc-400">
-            <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => fitView()}>
+            <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => void zoomOut()}>
               <Minus className="size-3.5" />
             </button>
-            <span className="px-1">100%</span>
-            <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => fitView()}>
+            <span className="px-1">{Math.round(zoom * 100)}%</span>
+            <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => void zoomIn()}>
               <Plus className="size-3.5" />
             </button>
             <button className="px-2 hover:text-white" onClick={() => fitView()}>
@@ -313,7 +643,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </button>
           </div>
         </div>
-        <aside className="w-[320px] border-l border-[#1e1e22] bg-[#0b0b0d]">
+        <aside className="w-[420px] shrink-0 border-l border-[#1e1e22] bg-[#0b0b0d]">
           {selectedEdge && !selected ? (
             <EdgeDetails
               edge={selectedEdge}
@@ -326,6 +656,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               connections={connections}
               onChange={(data) => selected && sync.updateNode(selected.id, data)}
               onOpenInner={() => void openInner()}
+              onSelectNode={selectNodeOnly}
+              onUngroup={ungroupSelection}
               readOnly={sync.readOnly}
             />
           )}
@@ -335,9 +667,14 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   );
 }
 
-function Tool({ icon, onClick }: { icon: ReactNode; onClick?: () => void }) {
+function Tool({ icon, onClick, active }: { icon: ReactNode; onClick?: () => void; active?: boolean }) {
   return (
-    <button className="grid size-8 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-white" onClick={onClick}>
+    <button
+      className={`grid size-8 place-items-center rounded-xl hover:bg-white/5 hover:text-white ${
+        active ? "bg-white/10 text-white" : "text-zinc-400"
+      }`}
+      onClick={onClick}
+    >
       {icon}
     </button>
   );
