@@ -5,7 +5,7 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:5432/postgres",
+    url: process.env.DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:5432/dataflow",
   },
   schemaFilter: [process.env.DATABASE_SCHEMA ?? "dataflow"],
 });

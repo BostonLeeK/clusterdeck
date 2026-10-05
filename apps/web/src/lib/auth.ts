@@ -49,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!email || !password) return null;
         const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
         if (!user?.passwordHash) return null;
+        if (!user.emailVerified) return null;
         const ok = await verify(user.passwordHash, password);
         if (!ok) return null;
         return { id: user.id, name: user.name, email: user.email, image: user.image };

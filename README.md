@@ -26,8 +26,6 @@ Services:
 | Realtime  | ws://localhost:1234     |
 | Postgres  | localhost:5432          |
 
-Seed login: `bohdan@dev` / `password123`
-
 Useful commands:
 
 ```bash
@@ -36,18 +34,19 @@ pnpm docker:down
 pnpm docker:reset   # wipe DB volume and rebuild
 ```
 
-Compose builds one app image and runs `migrate` (schema + seed), `web`, and `realtime` against the `postgres` service. Inside containers `DATABASE_URL` points to host `postgres`; from the host use `127.0.0.1:5432`.
+Compose builds one app image and runs `migrate` (schema only), `web`, and `realtime` against the `postgres` service. Inside containers `DATABASE_URL` points to host `postgres`; from the host use `127.0.0.1:5432`.
 
 ## Local setup (without Docker)
 
 1. Copy `.env.example` to `.env` and point `DATABASE_URL` at your Postgres.
 2. Install: `pnpm install`
-3. Migrate and seed:
+3. Migrate:
 
 ```bash
 pnpm db:migrate
-pnpm db:seed
 ```
+
+Optional demo data: `pnpm db:seed` (login `bohdan@dev` / `password123`).
 
 4. Run web + realtime:
 

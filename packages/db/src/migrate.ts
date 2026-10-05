@@ -3,11 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error("DATABASE_URL is not set");
-}
+const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:5432/dataflow";
 
+const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const schemaName = process.env.DATABASE_SCHEMA ?? "dataflow";
 const sql = postgres(url, { max: 1 });
 const dir = join(dirname(fileURLToPath(import.meta.url)), "../drizzle");

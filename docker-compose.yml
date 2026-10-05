@@ -29,7 +29,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dataflow}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-dataflow}
-    command: sh -c "pnpm db:migrate && pnpm db:seed"
+    command: sh -c "pnpm db:migrate"
     depends_on:
       postgres:
         condition: service_healthy
