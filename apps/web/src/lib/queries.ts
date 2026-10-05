@@ -11,14 +11,33 @@ import {
   workspaces,
 } from "@dataflow/db";
 import type { MemberRole } from "@dataflow/shared";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 
 export async function requireUser() {
   const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("unauthorized");
+  if (!session?.user) redirect("/sign-in");
+
+  if (session.user.id) {
+    const [byId] = await db
+      .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1);
+    if (byId) return byId;
   }
-  return session.user;
+
+  const email = session.user.email?.trim().toLowerCase();
+  if (email) {
+    const [byEmail] = await db
+      .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (byEmail) return byEmail;
+  }
+
+  redirect("/sign-in");
 }
 
 export async function getAccess(projectId: string, userId?: string) {

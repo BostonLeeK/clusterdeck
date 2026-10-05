@@ -1,44 +1,50 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { eq } from "drizzle-orm";
 import { db, diagrams, projectMembers, projectTags, projects, workspaceMembers, workspaces } from "@dataflow/db";
 import { emptySnapshot } from "@dataflow/shared";
 import { requireUser } from "@/lib/queries";
 
 export async function createProject(formData: FormData) {
-  const user = await requireUser();
-  const name = String(formData.get("name") ?? "Untitled project").trim() || "Untitled project";
-  const description = String(formData.get("description") ?? "");
-  const kind = formData.get("kind") === "shared" ? "shared" : "personal";
-  const workspaceId = String(formData.get("workspaceId") ?? "") || null;
-  const [project] = await db
-    .insert(projects)
-    .values({
-      name,
-      description,
-      kind,
-      ownerId: user.id!,
-      workspaceId,
-    })
-    .returning();
-  if (!project) throw new Error("failed to create project");
-  await db.insert(projectMembers).values({ projectId: project.id, userId: user.id!, role: "owner" });
-  const [diagram] = await db
-    .insert(diagrams)
-    .values({ projectId: project.id, name, snapshot: emptySnapshot() })
-    .returning();
-  const tags = String(formData.get("tags") ?? "")
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-  if (tags.length) {
-    await db.insert(projectTags).values(
-      tags.map((tag) => ({ projectId: project.id, name: tag, color: "#818cf8" })),
-    );
+  try {
+    const user = await requireUser();
+    const name = String(formData.get("name") ?? "Untitled project").trim() || "Untitled project";
+    const description = String(formData.get("description") ?? "");
+    const kind = formData.get("kind") === "shared" ? "shared" : "personal";
+    const workspaceId = String(formData.get("workspaceId") ?? "") || null;
+    const [project] = await db
+      .insert(projects)
+      .values({
+        name,
+        description,
+        kind,
+        ownerId: user.id,
+        workspaceId,
+      })
+      .returning();
+    if (!project) return { error: "Failed to create project." };
+    await db.insert(projectMembers).values({ projectId: project.id, userId: user.id, role: "owner" });
+    const [diagram] = await db
+      .insert(diagrams)
+      .values({ projectId: project.id, name, snapshot: emptySnapshot() })
+      .returning();
+    const tags = String(formData.get("tags") ?? "")
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (tags.length) {
+      await db.insert(projectTags).values(
+        tags.map((tag) => ({ projectId: project.id, name: tag, color: "#818cf8" })),
+      );
+    }
+    revalidatePath("/projects");
+    return { projectId: project.id, diagramId: diagram?.id };
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    return { error: "Failed to create project. Sign out and sign in again." };
   }
-  revalidatePath("/projects");
-  return { projectId: project.id, diagramId: diagram?.id };
 }
 
 export async function trashProject(projectId: string) {

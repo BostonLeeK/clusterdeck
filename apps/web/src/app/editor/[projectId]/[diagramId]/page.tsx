@@ -1,19 +1,17 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { EditorApp } from "@/components/editor/editor-app";
-import { auth } from "@/lib/auth";
 import { mergeInheritedPorts } from "@/lib/diagram";
-import { getDiagramWithTrail, getProjectBundle } from "@/lib/queries";
+import { getDiagramWithTrail, getProjectBundle, requireUser } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditorPage({
   params,
 }: PageProps<"/editor/[projectId]/[diagramId]">) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/sign-in");
+  const user = await requireUser();
   const { projectId, diagramId } = await params;
   const [bundle, trail] = await Promise.all([
-    getProjectBundle(projectId, session.user.id),
+    getProjectBundle(projectId, user.id),
     getDiagramWithTrail(diagramId),
   ]);
   if (!bundle || !trail || trail.diagram.projectId !== projectId) notFound();
@@ -36,7 +34,7 @@ export default async function EditorPage({
       members={bundle.members}
       trail={trail.trail}
       snapshot={snapshot}
-      user={session.user}
+      user={user}
       insideLabel={trail.diagram.parentDiagramId ? trail.diagram.name : undefined}
     />
   );

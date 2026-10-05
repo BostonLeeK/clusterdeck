@@ -56,8 +56,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
-      if (user?.id) token.sub = user.id;
+    async jwt({ token, user }) {
+      if (user?.id) {
+        token.sub = user.id;
+        if (user.email) token.email = user.email;
+        return token;
+      }
+      if (token.sub) {
+        const [byId] = await db.select({ id: users.id }).from(users).where(eq(users.id, token.sub)).limit(1);
+        if (byId) return token;
+      }
+      const email = typeof token.email === "string" ? token.email.trim().toLowerCase() : "";
+      if (email) {
+        const [byEmail] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+        if (byEmail) token.sub = byEmail.id;
+      }
       return token;
     },
     session({ session, token }) {
