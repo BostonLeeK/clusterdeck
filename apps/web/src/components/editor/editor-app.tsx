@@ -8,6 +8,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   useReactFlow,
   type Node,
 } from "@xyflow/react";
@@ -75,7 +76,7 @@ export function EditorApp(props: {
   members: Member[];
   trail: { id: string; name: string }[];
   snapshot: DiagramSnapshot;
-  user: { name?: string | null; email?: string | null; image?: string | null };
+  user: { id?: string | null; name?: string | null; email?: string | null; image?: string | null };
   insideLabel?: string;
   forceReadOnly?: boolean;
 }) {
@@ -386,23 +387,28 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </Button>
           ) : (
             <>
-              <div className="flex -space-x-1.5 pr-1">
-                {props.members.map((member) => (
-                  <Avatar
-                    key={member.id}
-                    name={member.name}
-                    email={member.email}
-                    image={member.image}
-                    className="size-6 ring-2 ring-[#0b0b0d]"
-                  />
-                ))}
-                {sync.presence.map((user) => (
-                  <span
-                    key={user.clientId}
-                    className="size-6 rounded-full ring-2 ring-[#0b0b0d]"
-                    style={{ background: user.color }}
-                  />
-                ))}
+              <div className="flex items-center gap-2 pr-1">
+                {sync.presence.length ? (
+                  <div className="flex -space-x-1.5">
+                    {sync.presence.map((user) => (
+                      <span key={user.clientId} title={user.name ?? "Collaborator"} className="relative">
+                        <Avatar
+                          name={user.name}
+                          image={user.image}
+                          className="size-6 ring-2 ring-[#0b0b0d]"
+                        />
+                        <span
+                          className="absolute right-0 bottom-0 size-1.5 rounded-full ring-1 ring-[#0b0b0d]"
+                          style={{ background: user.color }}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <span
+                  className={`size-1.5 rounded-full ${sync.connected ? "bg-emerald-400" : "bg-zinc-600"}`}
+                  title={sync.connected ? "Realtime connected" : "Connecting…"}
+                />
               </div>
               <ShareDialog
                 projectId={props.projectId}
@@ -573,8 +579,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (node.type === "infra") void openInner();
               }}
               fitView
+              minZoom={0.01}
+              maxZoom={4}
               panOnDrag={isPublic || tool === "pan" ? true : [1]}
-              selectionOnDrag={false}
+              selectionOnDrag={!isPublic && tool === "select"}
               selectNodesOnDrag={false}
               selectionKeyCode={isPublic ? null : "Shift"}
               multiSelectionKeyCode={isPublic ? null : "Shift"}
@@ -598,12 +606,45 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 nodeColor="#27272a"
                 nodeStrokeWidth={1}
               />
+              {!isPublic
+                ? sync.presence.map((user) =>
+                    user.cursor ? (
+                      <ViewportPortal key={user.clientId}>
+                        <div
+                          className="pointer-events-none absolute z-50"
+                          style={{
+                            transform: `translate(${user.cursor.x}px, ${user.cursor.y}px)`,
+                          }}
+                        >
+                          <svg width="16" height="20" viewBox="0 0 16 20" fill="none" className="-ml-0.5 -mt-0.5">
+                            <path
+                              d="M1 1L1 15.5L5.2 11.8L8.2 18.2L10.4 17.2L7.3 10.6L12.5 10.6L1 1Z"
+                              fill={user.color}
+                              stroke="#0b0b0d"
+                              strokeWidth="1"
+                            />
+                          </svg>
+                          <div
+                            className="mt-0.5 ml-3 flex items-center gap-1.5 rounded-full py-0.5 pr-2 pl-0.5 shadow-lg"
+                            style={{ background: user.color }}
+                          >
+                            <Avatar name={user.name} image={user.image} className="size-4 ring-1 ring-black/20" />
+                            <span className="max-w-28 truncate text-[10px] font-semibold text-zinc-950">
+                              {user.name ?? "User"}
+                            </span>
+                          </div>
+                        </div>
+                      </ViewportPortal>
+                    ) : null,
+                  )
+                : null}
             </ReactFlow>
           </DiagramPerspectiveProvider>
           {!isPublic ? (
             <PerspectiveBar
               tagDefs={tagDefs}
               flows={sync.meta.flows}
+              chat={sync.chat}
               hoveredTag={hoveredTag}
               pinnedTag={pinnedTag}
               tagMode={tagMode}
@@ -623,6 +664,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (!flow) return;
                 sync.upsertFlow({ ...flow, name });
               }}
+              onSendChat={sync.sendChat}
             />
           ) : null}
           {!isPublic ? (
@@ -808,20 +850,6 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             ) : null}
           </CanvasContextMenu>
           ) : null}
-          {!isPublic
-            ? sync.presence.map((user) =>
-                user.cursor ? (
-                  <div
-                    key={user.clientId}
-                    className="pointer-events-none absolute z-20 text-[10px]"
-                    style={{ left: 0, top: 0, transform: `translate(${user.cursor.x}px, ${user.cursor.y}px)` }}
-                  >
-                    <div className="size-2 rounded-full" style={{ background: user.color }} />
-                    <span style={{ color: user.color }}>{user.name}</span>
-                  </div>
-                ) : null,
-              )
-            : null}
           <div className="absolute bottom-4 left-4 flex items-center gap-2 text-xs text-zinc-500">
             {isPublic ? (
               <>
@@ -830,9 +858,14 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               </>
             ) : (
               <>
-                <span className="size-1.5 rounded-full bg-emerald-400" />
-                {sync.saved ? "All changes saved" : "Saving..."}
+                <span className={`size-1.5 rounded-full ${sync.connected ? "bg-emerald-400" : "bg-amber-400"}`} />
+                {sync.connected
+                  ? sync.saved
+                    ? "Live · All changes saved"
+                    : "Live · Syncing..."
+                  : "Connecting to realtime…"}
                 {sync.readOnly ? " · View only" : ""}
+                {sync.presence.length ? ` · ${sync.presence.length} online` : ""}
               </>
             )}
           </div>

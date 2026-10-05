@@ -12,6 +12,16 @@ import { emptyMeta } from "./node-types";
 export const Y_NODES = "nodes";
 export const Y_EDGES = "edges";
 export const Y_META = "meta";
+export const Y_CHAT = "chat";
+
+export type ChatMessage = {
+  id: string;
+  userId: string;
+  name: string;
+  image?: string | null;
+  text: string;
+  at: number;
+};
 
 export function getNodeMap(doc: Y.Doc): Y.Map<DiagramNode> {
   return doc.getMap(Y_NODES);
@@ -23,6 +33,10 @@ export function getEdgeMap(doc: Y.Doc): Y.Map<DiagramEdge> {
 
 export function getMetaMap(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(Y_META);
+}
+
+export function getChatArray(doc: Y.Doc): Y.Array<ChatMessage> {
+  return doc.getArray(Y_CHAT);
 }
 
 export function metaFromDoc(doc: Y.Doc): DiagramMeta {

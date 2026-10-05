@@ -109,14 +109,14 @@ export function ProjectsShell({
             Trash
           </Nav>
         </nav>
-        <div className="mt-auto flex items-center justify-between px-1 pt-4">
+        <div className="mt-auto flex items-center justify-between gap-2 px-1 pt-4">
           <div className="flex min-w-0 items-center gap-2">
             <Avatar name={user.name} email={user.email} image={user.image} />
-            <span className="truncate text-sm">{user.name ?? user.email}</span>
+            <span className="truncate text-sm leading-none">{user.name ?? user.email}</span>
           </div>
           <Menu>
             <MenuTrigger asChild>
-              <button className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-white">
+              <button className="grid size-7 shrink-0 place-items-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-white">
                 <Settings className="size-4" />
               </button>
             </MenuTrigger>
@@ -253,10 +253,10 @@ export function ProjectsShell({
             </div>
           </div>
 
-          <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
+          <div className={view === "grid" ? "grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
             {filter === "templates"
               ? PROJECT_TEMPLATES.map((template) => (
-                  <article key={template.id} className="rounded-2xl border border-border bg-card p-4">
+                  <article key={template.id} className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
                     <div className="rounded-xl bg-surface px-2 pt-2">
                       <DiagramPreview snapshot={template.snapshot} />
                     </div>
@@ -272,7 +272,7 @@ export function ProjectsShell({
                     <CreateProjectButton
                       workspaceId={workspaceId}
                       defaultTemplate={template.id}
-                      triggerClassName="mt-4 inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
+                      triggerClassName="mt-auto inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
                     >
                       Use template
                     </CreateProjectButton>
@@ -281,31 +281,41 @@ export function ProjectsShell({
               : projects.map((project) => (
               <article
                 key={project.id}
-                className="rounded-2xl border border-border bg-card p-4"
+                className="flex h-full flex-col rounded-2xl border border-border bg-card p-4"
               >
-                <Link href={project.rootDiagramId ? `/editor/${project.id}/${project.rootDiagramId}` : "/projects"}>
+                <Link
+                  href={project.rootDiagramId ? `/editor/${project.id}/${project.rootDiagramId}` : "/projects"}
+                  className="block min-w-0"
+                >
                   <div className="rounded-xl bg-surface px-2 pt-2">
                     <DiagramPreview snapshot={project.snapshot} />
                   </div>
-                  <h2 className="mt-3 text-[15px] font-medium">{project.name}</h2>
-                  <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{project.description}</p>
-                </Link>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {project.tags.map((tag) => (
-                    <span
-                      key={tag.id}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
-                    >
-                      <span className="size-1.5 rounded-full" style={{ background: tag.color }} />
-                      {tag.name}
+                  <div className="mt-3 flex items-start justify-between gap-3">
+                    <h2 className="min-w-0 truncate text-[15px] font-medium leading-6">{project.name}</h2>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] leading-4 text-zinc-400">
+                      <Users className="size-3" />
+                      {project.kind === "shared" ? "Shared" : "Personal"}
                     </span>
-                  ))}
-                  <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-zinc-400">
-                    <Users className="size-3" />
-                    {project.kind === "shared" ? "Shared" : "Personal"}
-                  </span>
-                </div>
-                <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-[11px] text-zinc-500">
+                  </div>
+                  {project.description ? (
+                    <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{project.description}</p>
+                  ) : null}
+                </Link>
+                {project.tags.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {project.tags.map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
+                      >
+                        <span className="size-1.5 rounded-full" style={{ background: tag.color }} />
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-auto pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-3 text-[11px] text-zinc-500">
                   <div className="flex items-center">
                     <div className="flex -space-x-1.5">
                       {project.members.slice(0, 3).map((member) => (
@@ -342,13 +352,14 @@ export function ProjectsShell({
                       </MenuContent>
                     </Menu>
                   </div>
+                  </div>
                 </div>
               </article>
             ))}
             {filter !== "trash" && filter !== "templates" ? (
               <CreateProjectButton
                 workspaceId={filter === "team" ? workspaceId : undefined}
-                triggerClassName="flex min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-border text-zinc-500 hover:bg-white/[0.02]"
+                triggerClassName="flex h-full min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-border text-zinc-500 hover:bg-white/[0.02]"
               >
                 <span className="mb-3 grid size-14 place-items-center rounded-full border border-border">
                   <Plus className="size-6" />

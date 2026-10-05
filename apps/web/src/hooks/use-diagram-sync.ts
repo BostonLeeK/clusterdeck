@@ -15,10 +15,12 @@ import * as Y from "yjs";
 import {
   applySnapshot,
   emptyMeta,
+  getChatArray,
   getEdgeMap,
   getMetaMap,
   getNodeMap,
   snapshotFromDoc,
+  type ChatMessage,
   type DiagramEdge,
   type DiagramFlow,
   type DiagramMeta,
@@ -34,13 +36,22 @@ import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
   clientId: number;
+  userId?: string;
   name?: string;
+  image?: string | null;
   color: string;
   cursor?: { x: number; y: number };
 };
 
-const COLORS = ["#818cf8", "#22d3ee", "#34d399", "#f472b6", "#fbbf24"];
+const COLORS = ["#818cf8", "#22d3ee", "#34d399", "#f472b6", "#fbbf24", "#fb7185", "#a78bfa"];
 const LOCAL_ORIGIN = "local";
+const MAX_CHAT = 200;
+
+function colorFor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  return COLORS[Math.abs(hash) % COLORS.length]!;
+}
 
 function flowNodesToDiagram(nodes: Node[]): DiagramNode[] {
   return nodes.map((node) =>
@@ -70,7 +81,7 @@ function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
 export function useDiagramSync(opts: {
   diagramId: string;
   initial: DiagramSnapshot;
-  user: { name?: string | null; email?: string | null };
+  user: { id?: string | null; name?: string | null; email?: string | null; image?: string | null };
   forceReadOnly?: boolean;
 }) {
   const docRef = useRef<Y.Doc>(new Y.Doc());
@@ -82,13 +93,17 @@ export function useDiagramSync(opts: {
   const [edges, setEdgesState] = useState<Edge[]>(edgesRef.current);
   const [meta, setMetaState] = useState<DiagramMeta>(metaRef.current);
   const [saved, setSaved] = useState(true);
+  const [connected, setConnected] = useState(false);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
   const [role, setRole] = useState<MemberRole>(opts.forceReadOnly ? "viewer" : "editor");
   const [readOnly, setReadOnly] = useState(Boolean(opts.forceReadOnly));
   const initialRef = useRef(opts.initial);
   const providerRef = useRef<HocuspocusProvider | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cursorTimer = useRef(0);
+  const userRef = useRef(opts.user);
+  userRef.current = opts.user;
 
   const setNodes = useCallback((updater: Node[] | ((current: Node[]) => Node[])) => {
     setNodesState((current) => {
@@ -152,23 +167,24 @@ export function useDiagramSync(opts: {
     applySnapshot(doc, initialRef.current);
     metaRef.current = initialRef.current.meta ?? emptyMeta();
     setMetaState(metaRef.current);
+    setChat(getChatArray(doc).toArray());
     undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc), getMetaMap(doc)]);
 
-    const onYChange = (_event: unknown, transaction: Y.Transaction) => {
-      if (transaction.origin === LOCAL_ORIGIN) return;
+    const hydrateRemote = (_update: Uint8Array, origin: unknown) => {
+      if (origin === LOCAL_ORIGIN) return;
       hydrateFromDoc(doc);
     };
-    getNodeMap(doc).observe(onYChange);
-    getEdgeMap(doc).observe(onYChange);
-    getMetaMap(doc).observe(onYChange);
+    doc.on("update", hydrateRemote);
+
+    const refreshChat = () => setChat(getChatArray(doc).toArray());
+    getChatArray(doc).observe(refreshChat);
 
     let cancelled = false;
     if (opts.forceReadOnly) {
       return () => {
         cancelled = true;
-        getNodeMap(doc).unobserve(onYChange);
-        getEdgeMap(doc).unobserve(onYChange);
-        getMetaMap(doc).unobserve(onYChange);
+        doc.off("update", hydrateRemote);
+        getChatArray(doc).unobserve(refreshChat);
       };
     }
 
@@ -179,6 +195,7 @@ export function useDiagramSync(opts: {
         setReadOnly(nextReadOnly);
         const url = resolveRealtimeUrl();
         if (!url) return;
+
         const provider = new HocuspocusProvider({
           url,
           name: opts.diagramId,
@@ -186,44 +203,73 @@ export function useDiagramSync(opts: {
           token,
         });
         providerRef.current = provider;
-        provider.on("unsyncedChanges", ({ number }: { number: number }) => setSaved(number === 0));
-        provider.on("synced", () => {
-          setSaved(true);
-          hydrateFromDoc(doc);
-        });
-        provider.awareness?.setLocalStateField("user", {
-          name: opts.user.name ?? opts.user.email ?? "Anonymous",
-          color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        });
+
+        const publishLocalUser = () => {
+          const user = userRef.current;
+          const seed = user.id || user.email || user.name || "anon";
+          provider.awareness?.setLocalStateField("user", {
+            userId: user.id ?? undefined,
+            name: user.name ?? user.email ?? "Anonymous",
+            image: user.image ?? null,
+            color: colorFor(seed),
+            cursor: provider.awareness?.getLocalState()?.user?.cursor,
+          });
+        };
+
         const onAwareness = () => {
           const users: PresenceUser[] = [];
           provider.awareness?.getStates().forEach((state, clientId) => {
             if (clientId === provider.awareness?.clientID) return;
+            if (!state.user) return;
             users.push({
               clientId,
-              name: state.user?.name,
-              color: state.user?.color ?? "#818cf8",
-              cursor: state.user?.cursor,
+              userId: state.user.userId,
+              name: state.user.name,
+              image: state.user.image,
+              color: state.user.color ?? "#818cf8",
+              cursor: state.user.cursor,
             });
           });
           setPresence(users);
         };
+
+        provider.on("unsyncedChanges", ({ number }: { number: number }) => setSaved(number === 0));
+        provider.on("synced", () => {
+          setSaved(true);
+          setConnected(true);
+          hydrateFromDoc(doc);
+          refreshChat();
+          publishLocalUser();
+          onAwareness();
+        });
+        provider.on("status", ({ status }: { status: string }) => {
+          setConnected(status === "connected");
+          if (status === "connected") {
+            publishLocalUser();
+            onAwareness();
+          }
+        });
+        provider.on("awarenessUpdate", onAwareness);
         provider.awareness?.on("change", onAwareness);
+        publishLocalUser();
+        onAwareness();
       })
       .catch(() => {
         setSaved(true);
+        setConnected(false);
       });
 
     return () => {
       cancelled = true;
-      getNodeMap(doc).unobserve(onYChange);
-      getEdgeMap(doc).unobserve(onYChange);
-      getMetaMap(doc).unobserve(onYChange);
+      doc.off("update", hydrateRemote);
+      getChatArray(doc).unobserve(refreshChat);
       if (persistTimer.current) clearTimeout(persistTimer.current);
       providerRef.current?.destroy();
       providerRef.current = null;
+      setConnected(false);
+      setPresence([]);
     };
-  }, [hydrateFromDoc, opts.diagramId, opts.forceReadOnly, opts.user.email, opts.user.name]);
+  }, [hydrateFromDoc, opts.diagramId, opts.forceReadOnly]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -555,6 +601,25 @@ export function useDiagramSync(opts: {
     awareness.setLocalStateField("user", { ...current, cursor: { x, y } });
   }, []);
 
+  const sendChat = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const user = userRef.current;
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      userId: user.id ?? user.email ?? "anon",
+      name: user.name ?? user.email ?? "Anonymous",
+      image: user.image ?? null,
+      text: trimmed.slice(0, 1000),
+      at: Date.now(),
+    };
+    const chatArr = getChatArray(docRef.current);
+    docRef.current.transact(() => {
+      chatArr.push([message]);
+      while (chatArr.length > MAX_CHAT) chatArr.delete(0, 1);
+    });
+  }, []);
+
   const selected = useMemo(() => nodes.find((node) => node.selected), [nodes]);
   const selectedEdge = useMemo(() => edges.find((edge) => edge.selected), [edges]);
 
@@ -581,7 +646,10 @@ export function useDiagramSync(opts: {
     deleteEdges,
     duplicateNodes,
     saved,
+    connected,
     presence,
+    chat,
+    sendChat,
     role,
     readOnly,
     selected,
