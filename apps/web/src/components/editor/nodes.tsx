@@ -1,8 +1,16 @@
 "use client";
 
-import { memo, type CSSProperties, type ReactNode } from "react";
-import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
-import { Layers } from "lucide-react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  useReactFlow,
+  useUpdateNodeInternals,
+  type NodeProps,
+} from "@xyflow/react";
+import { Icon as IconifyIcon } from "@iconify/react";
+import { Layers, MessageSquare, Type } from "lucide-react";
 import type {
   GroupNodeData,
   InfraNodeData,
@@ -23,6 +31,9 @@ import {
 import { NODE_ICONS, TECH_ICONS } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { useDiagramPerspective } from "@/components/editor/diagram-perspective";
+
+const INFRA_MIN_WIDTH = 200;
+const INFRA_MIN_HEIGHT = 72;
 
 const STATUS_DOT: Record<NodeStatus, string> = {
   healthy: "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.2)]",
@@ -85,7 +96,7 @@ function Shell({
   return (
     <div
       className={cn(
-        "relative min-w-[200px] bg-[#141416] py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)]",
+        "relative box-border w-full min-w-0 bg-[#141416] py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)]",
         hex ? "px-7" : "px-3",
         !hex && "border",
         shapeClass(shape),
@@ -122,8 +133,13 @@ function Shell({
   );
 }
 
-export const InfraNode = memo(function InfraNode({ id, data, selected }: NodeProps) {
+export const InfraNode = memo(function InfraNode({ id, data, selected, width, height }: NodeProps) {
   const node = data as InfraNodeData;
+  const sized = typeof width === "number" || typeof height === "number";
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentMin, setContentMin] = useState({ width: INFRA_MIN_WIDTH, height: INFRA_MIN_HEIGHT });
+  const { setNodes } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
   const perspective = useDiagramPerspective();
   const typeMeta = nodeTypeById(node.typeId);
   const Icon = NODE_ICONS[node.typeId];
@@ -135,6 +151,9 @@ export const InfraNode = memo(function InfraNode({ id, data, selected }: NodePro
   const techs = (node.technologies ?? []).slice(0, 3);
   const extraTech = Math.max(0, (node.technologies?.length ?? 0) - 3);
   const tags = node.tags.slice(0, 4);
+  const canvasProperties = (node.properties ?? []).filter(
+    (property) => property.showOnCanvas !== false && (property.value || property.key),
+  );
 
   const activeTag = perspective.hoveredTag ?? perspective.pinnedTag;
   const matchesTag = activeTag ? node.tags.includes(activeTag) : true;
@@ -146,13 +165,57 @@ export const InfraNode = memo(function InfraNode({ id, data, selected }: NodePro
   const onActiveFlow = Boolean(perspective.activeFlowId) && perspective.flowNodeIds.has(id);
   const dimmedByFlow = Boolean(perspective.activeFlowId) && !onActiveFlow;
 
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const syncToContent = () => {
+      const nextHeight = Math.max(INFRA_MIN_HEIGHT, Math.ceil(el.scrollHeight) + 20);
+      setContentMin((current) =>
+        current.height === nextHeight ? current : { width: INFRA_MIN_WIDTH, height: nextHeight },
+      );
+
+      if (typeof height !== "number" || height + 0.5 >= nextHeight) return;
+
+      setNodes((nodes) =>
+        nodes.map((item) => {
+          if (item.id !== id) return item;
+          return {
+            ...item,
+            height: nextHeight,
+            style: { ...item.style, height: nextHeight },
+          };
+        }),
+      );
+      updateNodeInternals(id);
+    };
+
+    syncToContent();
+    const observer = new ResizeObserver(syncToContent);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [
+    canvasProperties.length,
+    height,
+    id,
+    node.description,
+    node.displayDescription,
+    node.subtitle,
+    node.title,
+    setNodes,
+    tags.length,
+    techs.length,
+    updateNodeInternals,
+    width,
+  ]);
+
   if (hiddenByTag) {
     return <div className="pointer-events-none h-0 w-0 opacity-0" />;
   }
 
   return (
     <div
-      className="relative"
+      className={cn("relative box-border min-h-[72px] min-w-[200px]", sized && "size-full")}
       style={{
         ...lifecycleStyle(lifecycle),
         opacity: dimmedByTag || dimmedByFlow ? 0.28 : lifecycle === "removed" ? 0.45 : undefined,
@@ -165,6 +228,13 @@ export const InfraNode = memo(function InfraNode({ id, data, selected }: NodePro
         outlineOffset: 3,
       }}
     >
+      <NodeResizer
+        minWidth={INFRA_MIN_WIDTH}
+        minHeight={contentMin.height}
+        isVisible={selected}
+        lineClassName="border-indigo-400/40"
+        handleClassName="!h-2.5 !w-2.5 !rounded-full !border-indigo-400 !bg-[#141416]"
+      />
       <Handle type="target" position={Position.Left} className="!size-2.5 !border-0 !bg-zinc-500" />
       <Handle type="source" position={Position.Right} className="!size-2.5 !border-0 !bg-zinc-500" />
       <Shell
@@ -173,8 +243,9 @@ export const InfraNode = memo(function InfraNode({ id, data, selected }: NodePro
         accent={accent}
         dashed={scope === "external"}
         future={lifecycle === "future"}
-        className={cn(lifecycle === "deprecated" && "grayscale-[0.35]")}
+        className={cn(lifecycle === "deprecated" && "grayscale-[0.35]", sized && "size-full")}
       >
+        <div ref={contentRef} className="w-full min-w-0">
         {shape === "actor" ? (
           <div className="mb-1.5 flex justify-center">
             <span
@@ -269,6 +340,21 @@ export const InfraNode = memo(function InfraNode({ id, data, selected }: NodePro
             })}
           </div>
         ) : null}
+        {canvasProperties.length ? (
+          <div className="mt-2 flex w-full min-w-0 flex-wrap items-center gap-1">
+            {canvasProperties.map((property) => (
+              <span
+                key={property.id}
+                title={property.key ? `${property.key}: ${property.value || "—"}` : property.value}
+                className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-300"
+              >
+                {property.icon ? <IconifyIcon icon={property.icon} className="size-3 shrink-0 text-zinc-400" /> : null}
+                <span className="truncate">{property.value || property.key}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        </div>
       </Shell>
     </div>
   );
@@ -327,13 +413,41 @@ export const NoteNode = memo(function NoteNode({ data, selected }: NodeProps) {
   return (
     <div
       className={cn(
-        "min-w-[180px] max-w-[260px] rounded-xl border px-3 py-2 text-left shadow-[0_8px_30px_rgba(0,0,0,0.25)]",
-        comment ? "border-amber-500/40 bg-[#2a2214]" : "border-[#2a2a2e] bg-[#141416]",
+        "relative w-[240px] overflow-hidden rounded-xl border px-3 py-2.5 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)]",
+        comment ? "border-amber-500/35 bg-[#241c12]" : "border-[#2a2a2e] bg-[#141416]",
         selected && "ring-1 ring-indigo-400/40",
       )}
     >
-      <div className={cn("text-[12px] font-medium", comment ? "text-amber-200" : "text-zinc-200")}>{node.title}</div>
-      {node.body ? <div className="mt-1 text-[11px] leading-4 text-zinc-400">{node.body}</div> : null}
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-y-2 left-0 w-[3px] rounded-full",
+          comment ? "bg-amber-400/70" : "bg-zinc-500/70",
+        )}
+      />
+      <div className="flex items-center gap-1.5 pl-1.5">
+        {comment ? (
+          <MessageSquare className="size-3.5 shrink-0 text-amber-300/80" />
+        ) : (
+          <Type className="size-3.5 shrink-0 text-zinc-400" />
+        )}
+        <div
+          className={cn(
+            "min-w-0 flex-1 truncate text-[12px] font-medium",
+            comment ? "text-amber-100" : "text-zinc-200",
+          )}
+        >
+          {node.title || (comment ? "Comment" : "Text")}
+        </div>
+      </div>
+      {node.body?.trim() ? (
+        <div className="mt-1.5 max-h-[132px] overflow-hidden pl-1.5 text-[11px] leading-4 break-all whitespace-pre-wrap text-zinc-400">
+          {node.body}
+        </div>
+      ) : (
+        <div className="mt-1.5 pl-1.5 text-[11px] text-zinc-600">
+          {comment ? "Add a comment…" : "Add text…"}
+        </div>
+      )}
     </div>
   );
 });

@@ -75,10 +75,12 @@ export function ProjectsShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0b0b0d]">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-[#1e1e22] px-3 py-4">
+    <div className="flex min-h-screen bg-background">
+      <aside className="flex w-[240px] shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4">
         <div className="px-2 py-1">
-          <Logo />
+          <Link href="/projects" className="inline-flex rounded-lg hover:opacity-90">
+            <Logo />
+          </Link>
         </div>
         <WorkspaceSwitcher workspaces={workspaces} workspaceId={workspaceId} onSelect={selectWorkspace} />
         <nav className="space-y-0.5 text-[13px] text-zinc-400">
@@ -127,19 +129,19 @@ export function ProjectsShell({
             <Input
               defaultValue={params.get("q") ?? ""}
               placeholder="Search projects, diagrams, people..."
-              className="h-10 rounded-xl border-[#232326] bg-[#141416] pl-9 pr-14"
+              className="h-10 rounded-xl border-border bg-card pl-9 pr-14"
               onKeyDown={(event) => {
                 if (event.key === "Enter") setParam("q", event.currentTarget.value);
               }}
             />
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md border border-[#2a2a2e] bg-[#1a1a1d] px-1.5 py-0.5 text-[10px] text-zinc-500">
+            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-zinc-500">
               ⌘K
             </kbd>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <CreateProjectButton
               workspaceId={filter === "team" ? workspaceId : undefined}
-              triggerClassName="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#7b79ff]"
+              triggerClassName="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#6b74fb]"
             >
               <Plus className="size-4" /> New project
             </CreateProjectButton>
@@ -169,7 +171,7 @@ export function ProjectsShell({
                   href={`/projects?filter=${item}`}
                   className={`rounded-lg px-3 py-1.5 text-sm capitalize ${
                     activeFilter === item
-                      ? "border border-[#2a2a2e] bg-[#1a1a1d] text-white"
+                      ? "border border-border bg-secondary text-white"
                       : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
@@ -179,22 +181,22 @@ export function ProjectsShell({
             </div>
             <div className="flex items-center gap-2">
               <select
-                className="h-9 rounded-lg border border-[#2a2a2e] bg-[#141416] px-2 text-sm text-zinc-300"
+                className="h-9 rounded-lg border border-border bg-card px-2 text-sm text-zinc-300"
                 defaultValue={params.get("sort") ?? "updated"}
                 onChange={(event) => setParam("sort", event.target.value)}
               >
                 <option value="updated">Last edited</option>
                 <option value="name">Name</option>
               </select>
-              <div className="flex rounded-lg border border-[#2a2a2e] p-0.5">
+              <div className="flex rounded-lg border border-border p-0.5">
                 <button
-                  className={`grid size-8 place-items-center rounded-md ${view === "grid" ? "bg-[#1c1c1f] text-white" : "text-zinc-500"}`}
+                  className={`grid size-8 place-items-center rounded-md ${view === "grid" ? "bg-secondary text-white" : "text-zinc-500"}`}
                   onClick={() => setParam("view", "grid")}
                 >
                   <LayoutGrid className="size-4" />
                 </button>
                 <button
-                  className={`grid size-8 place-items-center rounded-md ${view === "list" ? "bg-[#1c1c1f] text-white" : "text-zinc-500"}`}
+                  className={`grid size-8 place-items-center rounded-md ${view === "list" ? "bg-secondary text-white" : "text-zinc-500"}`}
                   onClick={() => setParam("view", "list")}
                 >
                   <List className="size-4" />
@@ -206,8 +208,8 @@ export function ProjectsShell({
           <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
             {filter === "templates"
               ? PROJECT_TEMPLATES.map((template) => (
-                  <article key={template.id} className="rounded-2xl border border-[#232326] bg-[#141416] p-4">
-                    <div className="rounded-xl bg-[#0c0c0e] px-2 pt-2">
+                  <article key={template.id} className="rounded-2xl border border-border bg-card p-4">
+                    <div className="rounded-xl bg-surface px-2 pt-2">
                       <DiagramPreview snapshot={template.snapshot} />
                     </div>
                     <h2 className="mt-3 text-[15px] font-medium">{template.name}</h2>
@@ -222,7 +224,7 @@ export function ProjectsShell({
                     <CreateProjectButton
                       workspaceId={workspaceId}
                       defaultTemplate={template.id}
-                      triggerClassName="mt-4 inline-flex h-9 w-full items-center justify-center rounded-xl border border-[#2a2a2e] text-sm text-zinc-200 hover:bg-white/5"
+                      triggerClassName="mt-4 inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
                     >
                       Use template
                     </CreateProjectButton>
@@ -231,10 +233,10 @@ export function ProjectsShell({
               : projects.map((project) => (
               <article
                 key={project.id}
-                className="rounded-2xl border border-[#232326] bg-[#141416] p-4"
+                className="rounded-2xl border border-border bg-card p-4"
               >
                 <Link href={project.rootDiagramId ? `/editor/${project.id}/${project.rootDiagramId}` : "/projects"}>
-                  <div className="rounded-xl bg-[#0c0c0e] px-2 pt-2">
+                  <div className="rounded-xl bg-surface px-2 pt-2">
                     <DiagramPreview snapshot={project.snapshot} />
                   </div>
                   <h2 className="mt-3 text-[15px] font-medium">{project.name}</h2>
@@ -250,12 +252,12 @@ export function ProjectsShell({
                       {tag.name}
                     </span>
                   ))}
-                  <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-[#2a2a2e] px-2 py-0.5 text-[11px] text-zinc-400">
+                  <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-zinc-400">
                     <Users className="size-3" />
                     {project.kind === "shared" ? "Shared" : "Personal"}
                   </span>
                 </div>
-                <div className="mt-4 flex items-center justify-between text-[11px] text-zinc-500">
+                <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-[11px] text-zinc-500">
                   <div className="flex items-center">
                     <div className="flex -space-x-1.5">
                       {project.members.slice(0, 3).map((member) => (
@@ -264,7 +266,7 @@ export function ProjectsShell({
                           name={member.name}
                           email={member.email}
                           image={member.image}
-                          className="size-6 ring-2 ring-[#141416]"
+                          className="size-6 ring-2 ring-card"
                         />
                       ))}
                     </div>
@@ -298,9 +300,9 @@ export function ProjectsShell({
             {filter !== "trash" && filter !== "templates" ? (
               <CreateProjectButton
                 workspaceId={filter === "team" ? workspaceId : undefined}
-                triggerClassName="flex min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#2a2a2e] text-zinc-500 hover:bg-white/[0.02]"
+                triggerClassName="flex min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-border text-zinc-500 hover:bg-white/[0.02]"
               >
-                <span className="mb-3 grid size-14 place-items-center rounded-full border border-[#2a2a2e]">
+                <span className="mb-3 grid size-14 place-items-center rounded-full border border-border">
                   <Plus className="size-6" />
                 </span>
                 <span className="text-sm text-zinc-200">Create new project</span>
@@ -328,10 +330,11 @@ function Nav({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 rounded-xl px-3 py-2 ${
-        active ? "bg-[#1a1a22] text-white" : "hover:bg-white/5"
+      className={`relative flex items-center gap-2.5 rounded-xl px-3 py-2 ${
+        active ? "bg-[#202127] text-white" : "hover:bg-white/5"
       }`}
     >
+      {active ? <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-primary" /> : null}
       {icon}
       {children}
     </Link>

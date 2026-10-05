@@ -1,12 +1,26 @@
 "use client";
 
 import type { Edge } from "@xyflow/react";
-import { Plus, X } from "lucide-react";
+import { GitCommitHorizontal, Minus, Plus, Spline, X } from "lucide-react";
 import type { DiagramFlow, EdgeLineShape } from "@dataflow/shared";
 import { EDGE_LINE_SHAPES } from "@dataflow/shared";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
+
+const LINE_SHAPE_OPTIONS = EDGE_LINE_SHAPES.map((shape) => ({
+  value: shape,
+  label: shape,
+  icon:
+    shape === "bezier" ? (
+      <Spline className="size-3.5" />
+    ) : shape === "straight" ? (
+      <Minus className="size-3.5" />
+    ) : (
+      <GitCommitHorizontal className="size-3.5" />
+    ),
+}));
 
 export function EdgeDetails({
   edge,
@@ -60,20 +74,13 @@ export function EdgeDetails({
         />
       </div>
       <div className="mt-4 space-y-1.5">
-        <Label htmlFor="edge-shape">Line shape</Label>
-        <select
-          id="edge-shape"
-          disabled={readOnly}
-          className="h-10 w-full rounded-xl border border-[#2a2a2e] bg-[#121214] px-3 text-sm"
+        <Label>Line shape</Label>
+        <SegmentedControl
           value={lineShape}
-          onChange={(event) => onChange({ lineShape: event.target.value as EdgeLineShape })}
-        >
-          {EDGE_LINE_SHAPES.map((shape) => (
-            <option key={shape} value={shape}>
-              {shape}
-            </option>
-          ))}
-        </select>
+          options={LINE_SHAPE_OPTIONS}
+          disabled={readOnly}
+          onChange={(next) => onChange({ lineShape: next })}
+        />
       </div>
       <label className="mt-5 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-[#2a2a2e] bg-[#121214] px-3 py-3">
         <div>

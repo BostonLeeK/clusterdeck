@@ -47,8 +47,37 @@ export type MemberRole = "owner" | "editor" | "viewer";
 export type WorkspaceRole = "owner" | "admin" | "member";
 
 export interface NodeProperty {
+  id: string;
   key: string;
   value: string;
+  icon?: string;
+  showOnCanvas?: boolean;
+}
+
+export function createNodeProperty(
+  partial: Partial<NodeProperty> & Pick<NodeProperty, "key"> = { key: "" },
+): NodeProperty {
+  return {
+    id: partial.id ?? crypto.randomUUID(),
+    key: partial.key,
+    value: partial.value ?? "",
+    icon: partial.icon,
+    showOnCanvas: partial.showOnCanvas !== false,
+  };
+}
+
+export function normalizeNodeProperties(
+  properties: Array<Partial<NodeProperty> & Pick<NodeProperty, "key" | "value">> | undefined,
+): NodeProperty[] {
+  return (properties ?? []).map((property) =>
+    createNodeProperty({
+      id: property.id,
+      key: property.key ?? "",
+      value: property.value ?? "",
+      icon: property.icon,
+      showOnCanvas: property.showOnCanvas,
+    }),
+  );
 }
 
 export interface InfraNodeData {
@@ -288,7 +317,7 @@ export function createInfraNodeData(
     displayDescription: extra.displayDescription,
     tags: extra.tags ?? [],
     status: extra.status ?? "healthy",
-    properties: extra.properties ?? [],
+    properties: normalizeNodeProperties(extra.properties),
     shape: extra.shape ?? meta?.defaultShape,
     accentColor: extra.accentColor,
     scope: extra.scope ?? meta?.defaultScope,

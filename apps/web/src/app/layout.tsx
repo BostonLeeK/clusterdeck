@@ -8,8 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "DataFlow",
+  title: "ClusterDeck",
   description: "Map your infrastructure. Together.",
+  metadataBase: new URL("https://clusterdeck.space"),
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

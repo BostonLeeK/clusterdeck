@@ -2,25 +2,27 @@
 @import "@xyflow/react/dist/style.css";
 
 :root {
-  --background: #0b0b0d;
+  --background: #141518;
   --foreground: #f4f4f5;
-  --card: #141416;
+  --card: #1b1c1f;
   --card-foreground: #f4f4f5;
-  --popover: #161618;
+  --popover: #1b1c1f;
   --popover-foreground: #f4f4f5;
-  --primary: #6d6bff;
+  --primary: #5963fa;
   --primary-foreground: #ffffff;
-  --secondary: #1c1c1f;
+  --secondary: #22232a;
   --secondary-foreground: #fafafa;
-  --muted: #1c1c1f;
+  --muted: #22232a;
   --muted-foreground: #8b8b93;
-  --accent: #1c1c1f;
+  --accent: #22232a;
   --accent-foreground: #fafafa;
   --destructive: #ef4444;
-  --border: #232326;
-  --input: #1a1a1d;
-  --ring: #6d6bff;
+  --border: #2a2b31;
+  --input: #1b1c1f;
+  --ring: #5963fa;
   --radius: 0.75rem;
+  --sidebar: #111214;
+  --surface: #0c0d10;
 }
 
 @theme inline {
@@ -42,6 +44,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
   --font-sans: var(--font-inter);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -141,7 +145,6 @@ summary {
   box-shadow: none;
 }
 
-.react-flow__node-infra,
 .react-flow__node-note,
 .react-flow__node-port {
   width: auto !important;

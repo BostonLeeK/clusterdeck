@@ -25,9 +25,11 @@ import {
   Type,
   Undo2,
 } from "lucide-react";
+import Link from "next/link";
 import type { DiagramSnapshot, InfraNodeData, InfraNodeTypeId, MemberRole, TagDef } from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
 import { openOrCreateInnerDiagram } from "@/actions/diagrams";
+import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
 import { LabeledEdge } from "@/components/editor/labeled-edge";
 import { GroupNode, InfraNode, NoteNode, PortNode } from "@/components/editor/nodes";
@@ -334,23 +336,35 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     <div className="flex h-screen flex-col bg-[#0b0b0d]">
       <header className="flex h-12 items-center justify-between border-b border-[#1e1e22] px-4">
         <div className="flex min-w-0 items-center gap-1 text-[13px] text-zinc-500">
-          {props.trail.length > 1 ? (
-            <button
-              className="mr-1 grid size-7 shrink-0 place-items-center rounded-lg hover:bg-white/5"
-              onClick={() => {
+          <Link
+            href="/projects"
+            title="All projects"
+            className="mr-1 shrink-0 rounded-lg p-0.5 hover:bg-white/5"
+          >
+            <Logo showName={false} className="gap-0" />
+          </Link>
+          <button
+            type="button"
+            title={props.trail.length > 1 ? "Up one level" : "Back to projects"}
+            className="mr-1 grid size-7 shrink-0 place-items-center rounded-lg hover:bg-white/5"
+            onClick={() => {
+              if (props.trail.length > 1) {
                 const parent = props.trail[props.trail.length - 2];
                 if (parent) router.push(`/editor/${props.projectId}/${parent.id}`);
-              }}
-            >
-              <ArrowLeft className="size-4" />
-            </button>
-          ) : null}
+                return;
+              }
+              router.push("/projects");
+            }}
+          >
+            <ArrowLeft className="size-4" />
+          </button>
           <button
+            type="button"
             className="shrink-0 truncate text-zinc-200 hover:text-white"
             onClick={() => {
               const root = props.trail[0];
               if (root) router.push(`/editor/${props.projectId}/${root.id}`);
-              else router.push(`/projects`);
+              else router.push("/projects");
             }}
           >
             {props.projectName}
@@ -359,6 +373,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             <span key={item.id} className="flex min-w-0 items-center">
               <span className="mx-1.5 shrink-0 text-zinc-600">›</span>
               <button
+                type="button"
                 className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
                 onClick={() => router.push(`/editor/${props.projectId}/${item.id}`)}
               >

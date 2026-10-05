@@ -74,10 +74,10 @@ const prodSnapshot: DiagramSnapshot = {
       childCount: 6,
       description: "Authentication service. Validates user sessions and issues access tokens.",
       properties: [
-        { key: "Owner", value: "Team Core" },
-        { key: "Repo", value: "github.com/dev/auth" },
-        { key: "Port", value: "8080" },
-        { key: "Environment", value: "prod" },
+        { id: "auth-owner", key: "Owner", value: "Team Core", icon: "lucide:user-round", showOnCanvas: true },
+        { id: "auth-repo", key: "Repo", value: "github.com/dev/auth", icon: "simple-icons:github", showOnCanvas: true },
+        { id: "auth-port", key: "Port", value: "8080", icon: "lucide:plug", showOnCanvas: true },
+        { id: "auth-env", key: "Environment", value: "prod", icon: "lucide:globe", showOnCanvas: false },
       ],
     }),
     infra("billing-service", "billing-service", "service", 360, 70, {
@@ -161,10 +161,10 @@ const authInner: DiagramSnapshot = {
       tags: ["session", "6379"],
       description: "Shared session and token cache for auth pods.",
       properties: [
-        { key: "Engine", value: "Redis 7.2" },
-        { key: "Endpoint", value: "redis.internal:6379" },
-        { key: "Database", value: "0" },
-        { key: "Environment", value: "prod" },
+        { id: "redis-engine", key: "Engine", value: "Redis 7.2", icon: "simple-icons:redis", showOnCanvas: true },
+        { id: "redis-endpoint", key: "Endpoint", value: "redis.internal:6379", icon: "lucide:network", showOnCanvas: true },
+        { id: "redis-db", key: "Database", value: "0", icon: "lucide:database", showOnCanvas: true },
+        { id: "redis-env", key: "Environment", value: "prod", icon: "lucide:globe", showOnCanvas: false },
       ],
     }),
     infra("envoy", "Envoy sidecar", "service", 420, 240, {

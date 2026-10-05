@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { DiagramEdge, DiagramNode, DiagramSnapshot, InfraNodeData } from "@dataflow/shared";
+import { normalizeNodeProperties } from "@dataflow/shared";
 
 export function mergeInheritedPorts(
   parent: DiagramSnapshot,
@@ -50,20 +51,67 @@ export function mergeInheritedPorts(
   };
 }
 
+function resizableNodeLayout(node: DiagramNode) {
+  if (node.type === "infra" || node.type === "group") {
+    const style = node.width || node.height ? { width: node.width, height: node.height } : undefined;
+    return {
+      style,
+      width: node.width,
+      height: node.height,
+      zIndex: node.type === "group" ? -1 : undefined,
+    };
+  }
+  return { style: undefined, width: undefined, height: undefined, zIndex: undefined };
+}
+
+export function normalizeFlowInfraNode(node: Node): Node {
+  if (node.type !== "infra") return node;
+  const width =
+    typeof node.width === "number"
+      ? node.width
+      : typeof node.style?.width === "number"
+        ? node.style.width
+        : undefined;
+  const height =
+    typeof node.height === "number"
+      ? node.height
+      : typeof node.style?.height === "number"
+        ? node.style.height
+        : undefined;
+  if (typeof width !== "number" && typeof height !== "number") return node;
+  return {
+    ...node,
+    width,
+    height,
+    style: {
+      ...node.style,
+      ...(typeof width === "number" ? { width } : null),
+      ...(typeof height === "number" ? { height } : null),
+    },
+  };
+}
+
 export function toFlowNodes(nodes: DiagramNode[]): Node[] {
   const mapped = nodes.map((node) => {
-    const isGroup = node.type === "group";
+    const layout = resizableNodeLayout(node);
+    const data =
+      node.data.kind === "infra"
+        ? {
+            ...node.data,
+            properties: normalizeNodeProperties(node.data.properties),
+          }
+        : node.data;
     return {
       id: node.id,
       type: node.type,
       position: node.position,
       parentId: node.parentId,
       extent: node.parentId ? ("parent" as const) : node.extent,
-      style: isGroup && (node.width || node.height) ? { width: node.width, height: node.height } : undefined,
-      data: node.data as unknown as Record<string, unknown>,
-      width: isGroup ? node.width : undefined,
-      height: isGroup ? node.height : undefined,
-      zIndex: isGroup ? -1 : undefined,
+      style: layout.style,
+      data: data as unknown as Record<string, unknown>,
+      width: layout.width,
+      height: layout.height,
+      zIndex: layout.zIndex,
     };
   });
   return sortParentsFirst(mapped);
@@ -97,16 +145,13 @@ export function fromFlowNode(node: {
   style?: { width?: number | string; height?: number | string };
   measured?: { width?: number; height?: number };
 }): DiagramNode {
-  const isGroup = node.type === "group";
-  const width = isGroup
-    ? (node.width ??
-      (typeof node.style?.width === "number" ? node.style.width : undefined) ??
-      node.measured?.width)
+  const resizable = node.type === "group" || node.type === "infra";
+  const width = resizable
+    ? (node.width ?? (typeof node.style?.width === "number" ? node.style.width : undefined))
     : undefined;
-  const height = isGroup
+  const height = resizable
     ? (node.height ??
-      (typeof node.style?.height === "number" ? node.style.height : undefined) ??
-      node.measured?.height)
+      (typeof node.style?.height === "number" ? node.style.height : undefined))
     : undefined;
   return {
     id: node.id,
@@ -114,7 +159,7 @@ export function fromFlowNode(node: {
     position: node.position,
     parentId: node.parentId,
     extent: node.parentId ? "parent" : undefined,
-    width,
+    width: resizable ? width : undefined,
     height,
     data: node.data as DiagramNode["data"],
   };

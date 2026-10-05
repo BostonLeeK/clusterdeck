@@ -28,7 +28,7 @@ import {
   type MemberRole,
   type TagDef,
 } from "@dataflow/shared";
-import { fromFlowNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
+import { fromFlowNode, normalizeFlowInfraNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
 import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
@@ -228,7 +228,20 @@ export function useDiagramSync(opts: {
     (changes: NodeChange[]) => {
       if (readOnly) return;
       setNodes((current) => {
-        const next = applyNodeChanges(changes, current);
+        const next = (applyNodeChanges(changes, current) as Node[]).map((node) => {
+          if (node.type !== "infra") return node;
+          const dimensionChange = changes.find(
+            (change) => change.type === "dimensions" && change.id === node.id,
+          );
+          if (!dimensionChange || dimensionChange.type !== "dimensions") return node;
+          const width = dimensionChange.dimensions?.width ?? node.width;
+          const height = dimensionChange.dimensions?.height ?? node.height;
+          return normalizeFlowInfraNode({
+            ...node,
+            width: typeof width === "number" ? width : node.width,
+            height: typeof height === "number" ? height : node.height,
+          });
+        });
         const shouldPersist = changes.some((change) => {
           if (change.type === "remove") return true;
           if (change.type === "position" && change.dragging === false) return true;

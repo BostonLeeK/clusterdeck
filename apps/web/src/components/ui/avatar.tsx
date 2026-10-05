@@ -1,6 +1,6 @@
 import { cn, initials } from "@/lib/utils";
 
-const colors = ["#818cf8", "#22d3ee", "#34d399", "#f472b6", "#fbbf24"];
+const colors = ["#5963fa", "#60a5fa", "#34d399", "#c084fc", "#fbbf24"];
 
 export function Avatar({
   name,

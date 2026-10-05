@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Icon } from "@iconify/react";
+import { Boxes, Cpu, Database, HardDrive, Network, Users } from "lucide-react";
 import { loginUser, oauthSignIn, registerUser } from "@/actions/auth";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +16,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   return (
     <div className="grid min-h-screen grid-cols-1 bg-[#0b0b0d] lg:grid-cols-2">
       <div className="relative hidden flex-col justify-between p-10 lg:flex">
-        <Logo />
+        <Logo size="xl" />
         <AuthHeroGraph />
         <p className="max-w-md text-[42px] leading-[1.05] font-semibold tracking-tight">
           Map your infrastructure.
@@ -28,10 +31,12 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
           </h1>
           <div className="space-y-2.5">
             <Button className="h-11 w-full rounded-xl" variant="secondary" onClick={() => oauthSignIn("github")}>
-              <GitHubIcon /> Continue with GitHub
+              <Icon icon="simple-icons:github" className="size-4" />
+              Continue with GitHub
             </Button>
             <Button className="h-11 w-full rounded-xl" variant="secondary" onClick={() => oauthSignIn("google")}>
-              <GoogleIcon /> Continue with Google
+              <Icon icon="simple-icons:google" className="size-4" />
+              Continue with Google
             </Button>
           </div>
           <div className="my-6 flex items-center gap-3 text-xs text-zinc-500">
@@ -104,60 +109,149 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
 
 function AuthHeroGraph() {
   return (
-    <div className="mx-auto w-[92%] max-w-[560px]">
-      <svg viewBox="0 0 560 280" className="w-full">
-        <path d="M80 140 C 130 140, 130 60, 200 60" stroke="#3f3f46" fill="none" />
-        <path d="M80 140 C 130 140, 130 140, 200 140" stroke="#3f3f46" fill="none" />
-        <path d="M80 140 C 130 140, 130 220, 200 220" stroke="#3f3f46" fill="none" />
-        <path d="M280 60 C 330 60, 330 90, 380 90" stroke="#3f3f46" fill="none" />
-        <path d="M280 140 C 330 140, 330 90, 380 90" stroke="#3f3f46" fill="none" />
-        <path d="M280 140 C 330 140, 330 180, 380 180" stroke="#3f3f46" fill="none" />
-        <path d="M280 220 C 330 220, 330 180, 380 180" stroke="#3f3f46" fill="none" />
-        <path d="M460 90 C 500 90, 500 140, 520 140" stroke="#3f3f46" fill="none" />
-        <path d="M460 180 C 500 180, 500 140, 520 140" stroke="#3f3f46" fill="none" />
-        <text x="145" y="92" fill="#71717a" fontSize="9">HTTPS</text>
-        <text x="145" y="128" fill="#71717a" fontSize="9">gRPC</text>
-        <text x="145" y="188" fill="#71717a" fontSize="9">events</text>
-        {card(8, 118, "Web client", "entry point", "#a1a1aa")}
-        {card(200, 38, "API gateway", "HTTPS · ingress", "#818cf8")}
-        {card(200, 118, "Auth service", "gRPC · core", "#818cf8")}
-        {card(200, 198, "Event worker", "async · queue", "#34d399")}
-        {card(380, 68, "PostgreSQL", "primary data", "#60a5fa")}
-        {card(380, 158, "Message queue", "events · Kafka", "#f97316")}
-        <circle cx="528" cy="132" r="6" fill="#22c55e" />
-        <circle cx="528" cy="148" r="6" fill="none" stroke="#3f3f46" />
+    <div className="relative mx-auto aspect-[560/320] w-full max-w-[560px] overflow-hidden rounded-2xl border border-[#1e1e22] bg-[#0c0c0f]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-35"
+        style={{
+          backgroundImage: "radial-gradient(#3f3f46 1px, transparent 1px)",
+          backgroundSize: "16px 16px",
+        }}
+      />
+
+      <svg className="absolute inset-0 size-full" viewBox="0 0 560 320" fill="none" aria-hidden>
+        <path d="M156 160 C 190 160, 190 64, 224 64" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M156 160 C 190 160, 190 160, 224 160" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M156 160 C 190 160, 190 256, 224 256" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M384 64 C 410 64, 410 112, 392 112" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M384 160 C 410 160, 410 112, 392 112" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M384 160 C 410 160, 410 208, 392 208" stroke="#3f3f46" strokeWidth="1.5" />
+        <path d="M384 256 C 410 256, 410 208, 392 208" stroke="#3f3f46" strokeWidth="1.5" />
+        <text x="178" y="108" fill="#71717a" fontSize="10">
+          HTTPS
+        </text>
+        <text x="182" y="152" fill="#71717a" fontSize="10">
+          gRPC
+        </text>
+        <text x="178" y="214" fill="#71717a" fontSize="10">
+          events
+        </text>
+        <text x="400" y="96" fill="#71717a" fontSize="10">
+          SQL
+        </text>
+        <text x="400" y="192" fill="#71717a" fontSize="10">
+          TCP
+        </text>
       </svg>
+
+      <div className="absolute top-[128px] left-[16px] w-[140px]">
+        <HeroNode
+          icon={<Users className="size-3.5" />}
+          accent="#a1a1aa"
+          title="mobile-app"
+          subtitle="Client · iOS / Android"
+        />
+      </div>
+      <div className="absolute top-[32px] left-[224px] w-[160px]">
+        <HeroNode
+          icon={<Network className="size-3.5" />}
+          accent="#60a5fa"
+          title="api-gateway"
+          subtitle="CloudFront · ingress"
+        />
+      </div>
+      <div className="absolute top-[128px] left-[224px] w-[160px]">
+        <HeroNode
+          icon={<Boxes className="size-3.5" />}
+          accent="#818cf8"
+          title="auth-service"
+          subtitle="Node.js · Service"
+          selected
+          chips={[
+            { icon: "lucide:plug", label: "8080" },
+            { icon: "simple-icons:kubernetes", label: "k8s" },
+          ]}
+        />
+      </div>
+      <div className="absolute top-[224px] left-[224px] w-[160px]">
+        <HeroNode
+          icon={<Cpu className="size-3.5" />}
+          accent="#34d399"
+          title="auth-worker"
+          subtitle="Queue · 1 replica"
+        />
+      </div>
+      <div className="absolute top-[80px] left-[392px] w-[152px]">
+        <HeroNode
+          icon={<Database className="size-3.5" />}
+          accent="#38bdf8"
+          title="postgres-main"
+          subtitle="PostgreSQL · primary"
+        />
+      </div>
+      <div className="absolute top-[176px] left-[392px] w-[152px]">
+        <HeroNode
+          icon={<HardDrive className="size-3.5" />}
+          accent="#f97316"
+          title="redis-cache"
+          subtitle="Redis · sessions"
+        />
+      </div>
     </div>
   );
 }
 
-function card(x: number, y: number, title: string, sub: string, color: string) {
+function HeroNode({
+  icon,
+  accent,
+  title,
+  subtitle,
+  chips,
+  selected,
+}: {
+  icon: ReactNode;
+  accent: string;
+  title: string;
+  subtitle: string;
+  chips?: { icon: string; label: string }[];
+  selected?: boolean;
+}) {
   return (
-    <g transform={`translate(${x},${y})`}>
-      <rect width="120" height="44" rx="12" fill="#141416" stroke="#2a2a2e" />
-      <circle cx="16" cy="22" r="5" fill={color} />
-      <text x="28" y="20" fill="#e4e4e7" fontSize="11" fontFamily="Inter, system-ui">
-        {title}
-      </text>
-      <text x="28" y="34" fill="#71717a" fontSize="9" fontFamily="Inter, system-ui">
-        {sub}
-      </text>
-    </g>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="size-4 fill-current">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 4.77c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4">
-      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-1.5 3.6-5.1 3.6-3.1 0-5.6-2.5-5.6-5.6S8.9 6.2 12 6.2c1.8 0 3 .7 3.7 1.4l2.5-2.4C16.7 3.7 14.6 2.8 12 2.8 6.9 2.8 2.8 6.9 2.8 12S6.9 21.2 12 21.2c5.3 0 8.8-3.7 8.8-9 0-.6 0-1-.1-1.5H12z" />
-    </svg>
+    <div
+      className={cn(
+        "rounded-2xl border bg-[#141416] px-2.5 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.35)]",
+        selected && "ring-1 ring-indigo-400/35",
+      )}
+      style={{ borderColor: selected ? "#818cf8" : `${accent}66` }}
+    >
+      <div className="flex items-start justify-between gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="grid size-6 shrink-0 place-items-center rounded-md bg-white/5"
+            style={{ color: accent }}
+          >
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[11px] font-medium text-zinc-100">{title}</div>
+            <div className="truncate text-[9px] text-zinc-500">{subtitle}</div>
+          </div>
+        </div>
+        <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-emerald-400" />
+      </div>
+      {chips?.length ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chips.map((chip) => (
+            <span
+              key={`${chip.icon}-${chip.label}`}
+              className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[9px] text-zinc-300"
+            >
+              <Icon icon={chip.icon} className="size-2.5 text-zinc-400" />
+              {chip.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

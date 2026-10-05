@@ -18,10 +18,19 @@ function colorOf(node: DiagramNode) {
   return "#818cf8";
 }
 
+function withAlpha(hex: string, alpha: number) {
+  const raw = hex.replace("#", "");
+  if (raw.length !== 6) return hex;
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 export function DiagramPreview({ snapshot }: { snapshot: DiagramSnapshot }) {
   const nodes = snapshot.nodes.filter((node) => node.type !== "port").slice(0, 10);
   if (nodes.length === 0) {
-    return <div className="h-[132px] rounded-xl bg-[#0c0c0e]" />;
+    return <div className="h-[132px] rounded-xl bg-surface" />;
   }
 
   const ids = new Set(nodes.map((node) => node.id));
@@ -29,7 +38,7 @@ export function DiagramPreview({ snapshot }: { snapshot: DiagramSnapshot }) {
   const incoming = new Set(edges.map((edge) => edge.target));
   const roots = nodes.filter((node) => !incoming.has(node.id));
   const start = roots[0] ?? nodes[0];
-  if (!start) return <div className="h-[132px] rounded-xl bg-[#0c0c0e]" />;
+  if (!start) return <div className="h-[132px] rounded-xl bg-surface" />;
 
   const columns: DiagramNode[][] = [];
   const seen = new Set<string>();
@@ -95,14 +104,15 @@ export function DiagramPreview({ snapshot }: { snapshot: DiagramSnapshot }) {
       {Array.from(positions.entries()).map(([id, pos]) => {
         const node = nodes.find((item) => item.id === id);
         if (!node) return null;
+        const color = colorOf(node);
         return (
           <g key={id} transform={`translate(${pos.x},${pos.y})`}>
-            <rect width="88" height="24" rx="8" fill="#18181b" stroke="#27272a" />
-            <circle cx="11" cy="12" r="3.2" fill={colorOf(node)} />
-            <text x="20" y="11" fill="#e4e4e7" fontSize="8" fontFamily="Inter, system-ui">
+            <rect width="88" height="24" rx="8" fill={withAlpha(color, 0.14)} stroke={withAlpha(color, 0.35)} />
+            <circle cx="11" cy="12" r="3.2" fill={color} />
+            <text x="20" y="11" fill="#f4f4f5" fontSize="8" fontFamily="Inter, system-ui">
               {titleOf(node).slice(0, 14)}
             </text>
-            <text x="20" y="19" fill="#71717a" fontSize="6.5" fontFamily="Inter, system-ui">
+            <text x="20" y="19" fill="#a1a1aa" fontSize="6.5" fontFamily="Inter, system-ui">
               {subtitleOf(node).slice(0, 16)}
             </text>
           </g>
