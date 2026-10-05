@@ -248,3 +248,35 @@ export function projectInviteEmailHtml({
       "You’re receiving this email because someone invited you to a ClusterDeck project. If you weren’t expecting this, you can safely ignore this email.",
   });
 }
+
+export function workspaceInviteEmailHtml({
+  inviterName,
+  teamName,
+  role,
+  actionUrl,
+  existingUser,
+}: {
+  inviterName: string;
+  teamName: string;
+  role: string;
+  actionUrl: string;
+  existingUser: boolean;
+}) {
+  return layout({
+    title: `Invite to ${teamName}`,
+    preview: `${inviterName} invited you to join ${teamName} on ClusterDeck.`,
+    headlineHtml: `Join ${accentWord(teamName)}`,
+    subtitle: "Collaborate on your team’s infrastructure diagrams.",
+    bodyHtml: `${escapeHtml(inviterName)} invited you to the team <strong style="color:#ffffff;font-weight:700;">${escapeHtml(teamName)}</strong> as <strong style="color:#ffffff;font-weight:700;">${escapeHtml(role)}</strong>. ${
+      existingUser
+        ? "Open Team projects to start collaborating."
+        : "Create an account with this email to accept the invite."
+    }`,
+    ctaHref: actionUrl,
+    ctaLabel: existingUser ? "Open team →" : "Accept invite →",
+    showPreview: true,
+    showFeatures: false,
+    footerNote:
+      "You’re receiving this email because someone invited you to a ClusterDeck team. If you weren’t expecting this, you can safely ignore this email.",
+  });
+}

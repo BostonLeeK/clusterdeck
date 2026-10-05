@@ -8,6 +8,7 @@ import {
   customType,
 } from "drizzle-orm/pg-core";
 import type { DiagramSnapshot } from "@dataflow/shared";
+import { shortId } from "./ids";
 
 export const dataflow = pgSchema(process.env.DATABASE_SCHEMA ?? "dataflow");
 
@@ -108,7 +109,7 @@ export const projects = dataflow.table("projects", {
   linkAccess: text("link_access").notNull().$type<"none" | "view">().default("none"),
   shareToken: text("share_token")
     .notNull()
-    .$defaultFn(() => crypto.randomUUID()),
+    .$defaultFn(() => shortId(10)),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { mode: "date" }),
@@ -137,6 +138,21 @@ export const projectInvites = dataflow.table("project_invites", {
     .references(() => projects.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   role: text("role").notNull().$type<"owner" | "editor" | "viewer">(),
+  token: text("token")
+    .notNull()
+    .$defaultFn(() => crypto.randomUUID()),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const workspaceInvites = dataflow.table("workspace_invites", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().$type<"admin" | "member">().default("member"),
   token: text("token")
     .notNull()
     .$defaultFn(() => crypto.randomUUID()),
@@ -177,6 +193,7 @@ export const schema = {
   verificationTokens,
   workspaces,
   workspaceMembers,
+  workspaceInvites,
   projects,
   projectMembers,
   projectInvites,

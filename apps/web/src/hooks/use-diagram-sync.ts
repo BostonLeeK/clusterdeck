@@ -41,6 +41,8 @@ export type PresenceUser = {
   image?: string | null;
   color: string;
   cursor?: { x: number; y: number };
+  isSelf?: boolean;
+  guest?: boolean;
 };
 
 const COLORS = ["#818cf8", "#22d3ee", "#34d399", "#f472b6", "#fbbf24", "#fb7185", "#a78bfa"];
@@ -83,6 +85,7 @@ export function useDiagramSync(opts: {
   initial: DiagramSnapshot;
   user: { id?: string | null; name?: string | null; email?: string | null; image?: string | null };
   forceReadOnly?: boolean;
+  shareToken?: string;
 }) {
   const docRef = useRef<Y.Doc>(new Y.Doc());
   const undoRef = useRef<Y.UndoManager | null>(null);
@@ -96,7 +99,7 @@ export function useDiagramSync(opts: {
   const [connected, setConnected] = useState(false);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
   const [chat, setChat] = useState<ChatMessage[]>([]);
-  const [role, setRole] = useState<MemberRole>(opts.forceReadOnly ? "viewer" : "editor");
+  const [role, setRole] = useState<MemberRole | "public">(opts.forceReadOnly ? "viewer" : "editor");
   const [readOnly, setReadOnly] = useState(Boolean(opts.forceReadOnly));
   const initialRef = useRef(opts.initial);
   const providerRef = useRef<HocuspocusProvider | null>(null);
@@ -104,6 +107,22 @@ export function useDiagramSync(opts: {
   const cursorTimer = useRef(0);
   const userRef = useRef(opts.user);
   userRef.current = opts.user;
+
+  useEffect(() => {
+    const awareness = providerRef.current?.awareness;
+    if (!awareness) return;
+    const user = userRef.current;
+    const seed = user.id || user.email || user.name || "anon";
+    const current = awareness.getLocalState()?.user ?? {};
+    awareness.setLocalStateField("user", {
+      ...current,
+      userId: user.id ?? undefined,
+      name: user.name ?? user.email ?? "Anonymous",
+      image: user.image ?? null,
+      color: current.color ?? colorFor(seed),
+      guest: !user.id || String(user.id).startsWith("guest:"),
+    });
+  }, [opts.user.email, opts.user.id, opts.user.image, opts.user.name]);
 
   const setNodes = useCallback((updater: Node[] | ((current: Node[]) => Node[])) => {
     setNodesState((current) => {
@@ -164,14 +183,17 @@ export function useDiagramSync(opts: {
 
   useEffect(() => {
     const doc = docRef.current;
-    applySnapshot(doc, initialRef.current);
+    applySnapshot(doc, initialRef.current, "init");
     metaRef.current = initialRef.current.meta ?? emptyMeta();
     setMetaState(metaRef.current);
     setChat(getChatArray(doc).toArray());
-    undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc), getMetaMap(doc)]);
+    undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc), getMetaMap(doc)], {
+      trackedOrigins: new Set([LOCAL_ORIGIN]),
+      captureTimeout: 500,
+    });
 
     const hydrateRemote = (_update: Uint8Array, origin: unknown) => {
-      if (origin === LOCAL_ORIGIN) return;
+      if (origin === LOCAL_ORIGIN || origin === "init") return;
       hydrateFromDoc(doc);
     };
     doc.on("update", hydrateRemote);
@@ -180,19 +202,12 @@ export function useDiagramSync(opts: {
     getChatArray(doc).observe(refreshChat);
 
     let cancelled = false;
-    if (opts.forceReadOnly) {
-      return () => {
-        cancelled = true;
-        doc.off("update", hydrateRemote);
-        getChatArray(doc).unobserve(refreshChat);
-      };
-    }
 
-    void issueRealtimeToken(opts.diagramId)
+    void issueRealtimeToken(opts.diagramId, opts.shareToken)
       .then(({ token, role: nextRole, readOnly: nextReadOnly }) => {
         if (cancelled) return;
         setRole(nextRole);
-        setReadOnly(nextReadOnly);
+        setReadOnly(nextReadOnly || Boolean(opts.forceReadOnly));
         const url = resolveRealtimeUrl();
         if (!url) return;
 
@@ -207,19 +222,21 @@ export function useDiagramSync(opts: {
         const publishLocalUser = () => {
           const user = userRef.current;
           const seed = user.id || user.email || user.name || "anon";
+          const guest = !user.id || String(user.id).startsWith("guest:");
           provider.awareness?.setLocalStateField("user", {
             userId: user.id ?? undefined,
             name: user.name ?? user.email ?? "Anonymous",
             image: user.image ?? null,
             color: colorFor(seed),
+            guest,
             cursor: provider.awareness?.getLocalState()?.user?.cursor,
           });
         };
 
         const onAwareness = () => {
           const users: PresenceUser[] = [];
+          const localId = provider.awareness?.clientID;
           provider.awareness?.getStates().forEach((state, clientId) => {
-            if (clientId === provider.awareness?.clientID) return;
             if (!state.user) return;
             users.push({
               clientId,
@@ -228,12 +245,18 @@ export function useDiagramSync(opts: {
               image: state.user.image,
               color: state.user.color ?? "#818cf8",
               cursor: state.user.cursor,
+              isSelf: clientId === localId,
+              guest: Boolean(state.user.guest) || String(state.user.userId ?? "").startsWith("guest:"),
             });
           });
+          users.sort((a, b) => Number(b.isSelf) - Number(a.isSelf));
           setPresence(users);
         };
 
-        provider.on("unsyncedChanges", ({ number }: { number: number }) => setSaved(number === 0));
+        provider.on("unsyncedChanges", ({ number }: { number: number }) => {
+          if (opts.forceReadOnly) return;
+          setSaved(number === 0);
+        });
         provider.on("synced", () => {
           setSaved(true);
           setConnected(true);
@@ -269,7 +292,7 @@ export function useDiagramSync(opts: {
       setConnected(false);
       setPresence([]);
     };
-  }, [hydrateFromDoc, opts.diagramId, opts.forceReadOnly]);
+  }, [hydrateFromDoc, opts.diagramId, opts.forceReadOnly, opts.shareToken]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -606,6 +629,7 @@ export function useDiagramSync(opts: {
       name: user.name ?? user.email ?? current.name ?? "Anonymous",
       image: user.image ?? current.image ?? null,
       color: current.color ?? colorFor(seed),
+      guest: !user.id || String(user.id).startsWith("guest:"),
       cursor: { x, y },
     });
   }, []);
@@ -628,6 +652,16 @@ export function useDiagramSync(opts: {
       while (chatArr.length > MAX_CHAT) chatArr.delete(0, 1);
     });
   }, []);
+
+  const undo = useCallback(() => {
+    undoRef.current?.undo();
+    hydrateFromDoc(docRef.current);
+  }, [hydrateFromDoc]);
+
+  const redo = useCallback(() => {
+    undoRef.current?.redo();
+    hydrateFromDoc(docRef.current);
+  }, [hydrateFromDoc]);
 
   const selected = useMemo(() => nodes.find((node) => node.selected), [nodes]);
   const selectedEdge = useMemo(() => edges.find((edge) => edge.selected), [edges]);
@@ -664,8 +698,8 @@ export function useDiagramSync(opts: {
     selected,
     selectedEdge,
     setCursor,
-    undo: () => undoRef.current?.undo(),
-    redo: () => undoRef.current?.redo(),
+    undo,
+    redo,
     snapshot: () => ({
       nodes: flowNodesToDiagram(nodesRef.current),
       edges: flowEdgesToDiagram(edgesRef.current),

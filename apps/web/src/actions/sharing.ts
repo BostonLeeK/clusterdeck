@@ -2,16 +2,47 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { db, projectInvites, projectMembers, projects, users } from "@dataflow/db";
+import { db, isShortShareToken, projectInvites, projectMembers, projects, shortId, users } from "@dataflow/db";
 import { canShare, type MemberRole } from "@dataflow/shared";
 import { appBaseUrl, emailConfigured, sendEmail } from "@/lib/email";
 import { projectInviteEmailHtml } from "@/lib/email-templates";
 import { getAccess, requireUser } from "@/lib/queries";
 
-export async function inviteMember(projectId: string, email: string, role: MemberRole) {
+async function requireOwnerAccess(projectId: string) {
   const user = await requireUser();
   const access = await getAccess(projectId, user.id);
-  if (!access || !canShare(access.role)) return { error: "You don’t have permission to share this project." };
+  if (!access || !canShare(access.role)) {
+    return { error: "Only the project owner can manage sharing." as const, user, access: null };
+  }
+  return { user, access, error: null };
+}
+
+export async function ensureShortShareToken(projectId: string) {
+  const gate = await requireOwnerAccess(projectId);
+  if (gate.error || !gate.access) return { error: gate.error };
+  if (isShortShareToken(gate.access.project.shareToken)) {
+    return { shareToken: gate.access.project.shareToken };
+  }
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const shareToken = shortId(10);
+    try {
+      await db.update(projects).set({ shareToken }).where(eq(projects.id, projectId));
+      revalidatePath(`/editor/${projectId}`);
+      return { shareToken };
+    } catch {
+      /* collision, retry */
+    }
+  }
+  return { error: "Couldn’t shorten share link." as const };
+}
+
+export async function inviteMember(projectId: string, email: string, role: MemberRole) {
+  const gate = await requireOwnerAccess(projectId);
+  if (gate.error || !gate.access) return { error: gate.error };
+  const { user, access } = gate;
+
+  if (role === "owner") return { error: "Invite as editor or viewer instead." };
 
   const normalized = email.trim().toLowerCase();
   if (!normalized || !normalized.includes("@")) return { error: "Enter a valid email address." };
@@ -84,10 +115,10 @@ export async function inviteMember(projectId: string, email: string, role: Membe
 }
 
 export async function updateMemberRole(projectId: string, userId: string, role: MemberRole) {
-  const user = await requireUser();
-  const access = await getAccess(projectId, user.id);
-  if (!access || !canShare(access.role)) return { error: "You don’t have permission to change roles." };
-  if (access.project.ownerId === userId && role !== "owner") {
+  const gate = await requireOwnerAccess(projectId);
+  if (gate.error || !gate.access) return { error: gate.error };
+  if (role === "owner") return { error: "Ownership can’t be transferred this way." };
+  if (gate.access.project.ownerId === userId) {
     return { error: "Project owner role can’t be changed." };
   }
   await db
@@ -99,14 +130,13 @@ export async function updateMemberRole(projectId: string, userId: string, role: 
 }
 
 export async function removeMember(projectId: string, userId: string) {
-  const user = await requireUser();
-  const access = await getAccess(projectId, user.id);
-  if (!access || !canShare(access.role)) return { error: "You don’t have permission to remove members." };
-  if (access.project.ownerId === userId) {
+  const gate = await requireOwnerAccess(projectId);
+  if (gate.error || !gate.access) return { error: gate.error };
+  if (gate.access.project.ownerId === userId) {
     return { error: "You can’t remove the project owner." };
   }
-  if (user.id === userId) {
-    return { error: "You can’t remove yourself. Ask another owner." };
+  if (gate.user.id === userId) {
+    return { error: "You can’t remove yourself." };
   }
 
   const [target] = await db
@@ -130,12 +160,19 @@ export async function removeMember(projectId: string, userId: string) {
 }
 
 export async function setLinkAccess(projectId: string, enabled: boolean) {
-  const user = await requireUser();
-  const access = await getAccess(projectId, user.id);
-  if (!access || !canShare(access.role)) throw new Error("forbidden");
+  const gate = await requireOwnerAccess(projectId);
+  if (gate.error || !gate.access) throw new Error("forbidden");
+  let shareToken = gate.access.project.shareToken;
+  if (!isShortShareToken(shareToken)) {
+    shareToken = shortId(10);
+  }
   await db
     .update(projects)
-    .set({ linkAccess: enabled ? "view" : "none", kind: "shared" })
+    .set({
+      linkAccess: enabled ? "view" : "none",
+      kind: "shared",
+      shareToken,
+    })
     .where(eq(projects.id, projectId));
   revalidatePath(`/editor/${projectId}`);
 }

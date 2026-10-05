@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   diagrams,
@@ -7,6 +7,7 @@ import {
   projectTags,
   projects,
   users,
+  workspaceInvites,
   workspaceMembers,
   workspaces,
 } from "@dataflow/db";
@@ -54,6 +55,16 @@ export async function getAccess(projectId: string, userId?: string) {
     .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
     .limit(1);
   if (member) return { project, role: member.role };
+  if (project.workspaceId) {
+    const [wsMember] = await db
+      .select()
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, project.workspaceId), eq(workspaceMembers.userId, userId)))
+      .limit(1);
+    if (wsMember) {
+      return { project, role: "editor" as MemberRole };
+    }
+  }
   if (project.linkAccess === "view") return { project, role: "viewer" as MemberRole };
   return null;
 }
@@ -64,6 +75,36 @@ export async function listWorkspaces(userId: string) {
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
     .where(eq(workspaceMembers.userId, userId));
+}
+
+export async function listWorkspaceMembers(workspaceId: string, userId: string) {
+  const [access] = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+    .limit(1);
+  if (!access) return null;
+  const members = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      image: users.image,
+      role: workspaceMembers.role,
+    })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(eq(workspaceMembers.workspaceId, workspaceId));
+  const invites = await db
+    .select({
+      id: workspaceInvites.id,
+      email: workspaceInvites.email,
+      role: workspaceInvites.role,
+      createdAt: workspaceInvites.createdAt,
+    })
+    .from(workspaceInvites)
+    .where(eq(workspaceInvites.workspaceId, workspaceId));
+  return { role: access.role, members, invites };
 }
 
 export async function listProjects(opts: {
@@ -79,11 +120,29 @@ export async function listProjects(opts: {
       .from(projectMembers)
       .where(and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, opts.userId))),
   );
-  const conditions = [or(eq(projects.ownerId, opts.userId), memberExists)];
+  const workspaceMemberExists = exists(
+    db
+      .select({ one: sql`1` })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, projects.workspaceId),
+          eq(workspaceMembers.userId, opts.userId),
+        ),
+      ),
+  );
+  const conditions = [
+    or(eq(projects.ownerId, opts.userId), memberExists, and(isNotNull(projects.workspaceId), workspaceMemberExists)),
+  ];
   if (opts.filter === "trash") conditions.push(isNotNull(projects.deletedAt));
   else conditions.push(isNull(projects.deletedAt));
-  if (opts.filter === "personal") conditions.push(eq(projects.kind, "personal"));
-  if (opts.filter === "shared") conditions.push(eq(projects.kind, "shared"));
+  if (opts.filter === "personal") {
+    conditions.push(eq(projects.ownerId, opts.userId));
+    conditions.push(eq(projects.kind, "personal"));
+  }
+  if (opts.filter === "shared") {
+    conditions.push(ne(projects.ownerId, opts.userId));
+  }
   if (opts.filter === "team" || opts.workspaceId) {
     conditions.push(opts.workspaceId ? eq(projects.workspaceId, opts.workspaceId) : isNotNull(projects.workspaceId));
   }

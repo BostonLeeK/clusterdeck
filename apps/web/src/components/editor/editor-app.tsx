@@ -55,6 +55,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
+import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
 
 const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode, note: NoteNode };
 const edgeTypes = { labeled: LabeledEdge };
@@ -102,11 +103,27 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [pinnedTag, setPinnedTag] = useState<string | null>(null);
   const [tagMode, setTagMode] = useState<TagPerspectiveMode>("highlight");
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
+  const [presenceUser, setPresenceUser] = useState(props.user);
+
+  useEffect(() => {
+    if (!isGuestUser(props.user)) {
+      setPresenceUser(props.user);
+      return;
+    }
+    const guest = getOrCreateGuestIdentity();
+    setPresenceUser({
+      id: guest.id,
+      name: guest.name,
+      image: guest.image,
+    });
+  }, [props.user]);
+
   const sync = useDiagramSync({
     diagramId: props.diagramId,
     initial: props.snapshot,
-    user: props.user,
+    user: presenceUser,
     forceReadOnly: props.forceReadOnly,
+    shareToken: isPublic ? props.shareToken : undefined,
   });
 
   const selected = sync.selected as Node | undefined;
@@ -154,24 +171,19 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   );
   const connections = useMemo(() => {
     if (!selected) return { incoming: [], outgoing: [] };
-    const titleOf = (id: string) => {
-      const node = sync.nodes.find((item) => item.id === id);
-      const data = node?.data as { title?: string } | undefined;
-      return data?.title ?? id;
-    };
     return {
       incoming: sync.edges
         .filter((edge) => edge.target === selected.id)
         .map((edge) => ({
           id: edge.source,
-          title: titleOf(edge.source),
+          title: nodeTitle(sync.nodes, edge.source),
           label: typeof edge.label === "string" ? edge.label : undefined,
         })),
       outgoing: sync.edges
         .filter((edge) => edge.source === selected.id)
         .map((edge) => ({
           id: edge.target,
-          title: titleOf(edge.target),
+          title: nodeTitle(sync.nodes, edge.target),
           label: typeof edge.label === "string" ? edge.label : undefined,
         })),
     };
@@ -309,6 +321,17 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) sync.redo();
+        else sync.undo();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        sync.redo();
+        return;
+      }
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         deleteSelection();
@@ -321,7 +344,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteSelection, groupSelection, ungroupSelection]);
+  }, [deleteSelection, groupSelection, sync.redo, sync.undo, ungroupSelection]);
 
   const onPointerMoveCanvas = useCallback(
     (event: MouseEvent) => {
@@ -335,13 +358,35 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   );
 
   const presenceUsers = useMemo(() => {
+    if (!sync.presence.length) {
+      const seed = presenceUser.id || presenceUser.email || presenceUser.name || "you";
+      let hash = 0;
+      for (let i = 0; i < seed.length; i += 1) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+      const colors = ["#818cf8", "#22d3ee", "#34d399", "#f472b6", "#fbbf24", "#fb7185", "#a78bfa"];
+      return [
+        {
+          clientId: -1,
+          userId: presenceUser.id ?? undefined,
+          name: presenceUser.name || "You",
+          image: presenceUser.image ?? null,
+          color: colors[Math.abs(hash) % colors.length]!,
+          isSelf: true,
+          guest: isGuestUser(presenceUser),
+        },
+      ];
+    }
     return sync.presence.map((user) => {
+      if (user.isSelf) {
+        return {
+          ...user,
+          name: user.guest ? user.name || "You" : presenceUser.name || user.name || "You",
+          image: user.guest ? user.image : presenceUser.image || user.image || null,
+        };
+      }
       const member =
         props.members.find((item) => item.id === user.userId) ??
         props.members.find(
-          (item) =>
-            user.name &&
-            (item.name === user.name || item.email === user.name),
+          (item) => user.name && (item.name === user.name || item.email === user.name),
         );
       return {
         ...user,
@@ -349,7 +394,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
         image: user.image || member?.image || null,
       };
     });
-  }, [props.members, sync.presence]);
+  }, [presenceUser, props.members, sync.presence]);
+
+  const remoteCursorUsers = useMemo(
+    () => presenceUsers.filter((user) => !user.isSelf),
+    [presenceUsers],
+  );
 
   return (
     <div className="flex h-screen flex-col bg-[#0b0b0d]">
@@ -397,41 +447,41 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           {isPublic ? <span className="ml-2 shrink-0 text-xs text-zinc-500">View only</span> : null}
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pr-1">
+            {presenceUsers.length ? (
+              <div className="flex items-center -space-x-1.5">
+                {presenceUsers.map((user) => (
+                  <span
+                    key={user.clientId}
+                    title={user.isSelf ? `${user.name ?? "You"} (you)` : (user.name ?? "Collaborator")}
+                    className="relative inline-flex shrink-0"
+                  >
+                    <Avatar
+                      name={user.name}
+                      image={user.image}
+                      className="size-6 ring-2 ring-[#0b0b0d]"
+                    />
+                    <span
+                      className="absolute right-0 bottom-0 size-2 rounded-full border border-[#0b0b0d]"
+                      style={{ background: user.color }}
+                    />
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <span
+              className={`text-[10px] font-medium ${sync.connected ? "text-emerald-400" : "text-amber-400"}`}
+              title={sync.connected ? "Realtime connected" : "Connecting…"}
+            >
+              {sync.connected ? "Live" : "…"}
+            </span>
+          </div>
           {isPublic ? (
             <Button asChild size="sm" className="h-8 rounded-lg">
               <Link href="/sign-in">Sign in to edit</Link>
             </Button>
           ) : (
             <>
-              <div className="flex items-center gap-2 pr-1">
-                {presenceUsers.length ? (
-                  <div className="flex items-center -space-x-1.5">
-                    {presenceUsers.map((user) => (
-                      <span
-                        key={user.clientId}
-                        title={user.name ?? "Collaborator"}
-                        className="relative inline-flex shrink-0"
-                      >
-                        <Avatar
-                          name={user.name}
-                          image={user.image}
-                          className="size-6 ring-2 ring-[#0b0b0d]"
-                        />
-                        <span
-                          className="absolute right-0 bottom-0 size-2 rounded-full border border-[#0b0b0d]"
-                          style={{ background: user.color }}
-                        />
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                <span
-                  className={`text-[10px] font-medium ${sync.connected ? "text-emerald-400" : "text-amber-400"}`}
-                  title={sync.connected ? "Realtime connected" : "Connecting…"}
-                >
-                  {sync.connected ? "Live" : "…"}
-                </span>
-              </div>
               <ShareDialog
                 projectId={props.projectId}
                 shareToken={props.shareToken}
@@ -439,6 +489,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 members={props.members}
                 ownerId={props.ownerId}
                 currentUserId={props.user.id ?? undefined}
+                canManage={sync.role === "owner" || props.user.id === props.ownerId}
               />
               <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
               <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.undo}>
@@ -632,7 +683,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 nodeStrokeWidth={1}
               />
             </ReactFlow>
-            <RemoteCursors users={isPublic ? [] : presenceUsers} />
+            <RemoteCursors users={remoteCursorUsers} />
             </div>
           </DiagramPerspectiveProvider>
           {!isPublic ? (
@@ -882,6 +933,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             {selectedEdge && !selected ? (
               <EdgeDetails
                 edge={selectedEdge}
+                sourceLabel={nodeTitle(sync.nodes, selectedEdge.source)}
+                targetLabel={nodeTitle(sync.nodes, selectedEdge.target)}
                 flows={sync.meta.flows}
                 onChange={(patch) => sync.updateEdge(selectedEdge.id, patch)}
                 onToggleFlow={sync.toggleEdgeInFlow}
@@ -908,6 +961,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       </div>
     </div>
   );
+}
+
+function nodeTitle(nodes: Node[], id: string) {
+  const node = nodes.find((item) => item.id === id);
+  const data = node?.data as { title?: string } | undefined;
+  return data?.title?.trim() || "Untitled";
 }
 
 function RemoteCursors({

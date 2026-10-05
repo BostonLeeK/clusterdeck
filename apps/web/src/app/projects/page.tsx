@@ -1,4 +1,4 @@
-import { listProjects, listWorkspaces, requireUser } from "@/lib/queries";
+import { listProjects, listWorkspaceMembers, listWorkspaces, requireUser } from "@/lib/queries";
 import { ProjectsShell } from "@/components/projects/projects-shell";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +13,16 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   const workspaces = await listWorkspaces(user.id);
   const workspaceId =
     (typeof params.workspace === "string" ? params.workspace : undefined) ?? workspaces[0]?.id;
-  const projects = await listProjects({
-    userId: user.id,
-    filter: filter === "templates" ? "all" : filter,
-    query: typeof params.q === "string" ? params.q : undefined,
-    sort: params.sort === "name" ? "name" : "updated",
-    workspaceId: filter === "team" ? workspaceId : undefined,
-  });
+  const [projects, team] = await Promise.all([
+    listProjects({
+      userId: user.id,
+      filter: filter === "templates" ? "all" : filter,
+      query: typeof params.q === "string" ? params.q : undefined,
+      sort: params.sort === "name" ? "name" : "updated",
+      workspaceId: filter === "team" ? workspaceId : undefined,
+    }),
+    workspaceId ? listWorkspaceMembers(workspaceId, user.id) : Promise.resolve(null),
+  ]);
 
   return (
     <ProjectsShell
@@ -28,6 +31,20 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       projects={projects}
       filter={filter}
       workspaceId={workspaceId}
+      team={
+        team && workspaceId
+          ? {
+              workspaceId,
+              role: team.role,
+              members: team.members,
+              invites: team.invites.map((invite) => ({
+                id: invite.id,
+                email: invite.email,
+                role: invite.role,
+              })),
+            }
+          : null
+      }
     />
   );
 }

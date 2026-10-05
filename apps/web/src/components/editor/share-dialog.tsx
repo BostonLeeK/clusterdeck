@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Send, Trash2 } from "lucide-react";
-import { inviteMember, removeMember, setLinkAccess, updateMemberRole } from "@/actions/sharing";
+import {
+  ensureShortShareToken,
+  inviteMember,
+  removeMember,
+  setLinkAccess,
+  updateMemberRole,
+} from "@/actions/sharing";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +34,7 @@ export function ShareDialog({
   members,
   ownerId,
   currentUserId,
+  canManage,
 }: {
   projectId: string;
   shareToken: string;
@@ -35,6 +42,7 @@ export function ShareDialog({
   members: Member[];
   ownerId: string;
   currentUserId?: string;
+  canManage: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -43,12 +51,36 @@ export function ShareDialog({
   const [sending, setSending] = useState(false);
   const [people, setPeople] = useState(members);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [token, setToken] = useState(shareToken);
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/p/${shareToken}`;
+  const url = `${origin}/p/${token}`;
 
   useEffect(() => {
     setPeople(members);
   }, [members]);
+
+  useEffect(() => {
+    setToken(shareToken);
+  }, [shareToken]);
+
+  useEffect(() => {
+    setEnabled(linkAccess === "view");
+  }, [linkAccess]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    let cancelled = false;
+    void ensureShortShareToken(projectId).then((result) => {
+      if (cancelled || result.error || !result.shareToken) return;
+      setToken((current) => (current === result.shareToken ? current : result.shareToken!));
+      if (result.shareToken !== shareToken) router.refresh();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, projectId, router, shareToken]);
+
+  if (!canManage) return null;
 
   return (
     <Modal>
@@ -89,7 +121,6 @@ export function ShareDialog({
             options={[
               { value: "editor", label: "Editor" },
               { value: "viewer", label: "Viewer" },
-              { value: "owner", label: "Owner" },
             ]}
           />
           <Button type="submit" className="h-10 shrink-0" disabled={sending}>
@@ -114,29 +145,34 @@ export function ShareDialog({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <FormSelect
-                    size="sm"
-                    className="w-[110px]"
-                    value={member.role}
-                    onValueChange={async (next) => {
-                      const result = await updateMemberRole(projectId, member.id, next as MemberRole);
-                      if (result?.error) {
-                        toast(result.error, "error");
-                        return;
-                      }
-                      setPeople((current) =>
-                        current.map((item) =>
-                          item.id === member.id ? { ...item, role: next as MemberRole } : item,
-                        ),
-                      );
-                      router.refresh();
-                    }}
-                    options={[
-                      { value: "owner", label: "Owner" },
-                      { value: "editor", label: "Editor" },
-                      { value: "viewer", label: "Viewer" },
-                    ]}
-                  />
+                  {isProjectOwner ? (
+                    <span className="inline-flex h-8 w-[110px] items-center justify-center rounded-lg border border-[#2a2a2e] text-xs text-zinc-400">
+                      Owner
+                    </span>
+                  ) : (
+                    <FormSelect
+                      size="sm"
+                      className="w-[110px]"
+                      value={member.role}
+                      onValueChange={async (next) => {
+                        const result = await updateMemberRole(projectId, member.id, next as MemberRole);
+                        if (result?.error) {
+                          toast(result.error, "error");
+                          return;
+                        }
+                        setPeople((current) =>
+                          current.map((item) =>
+                            item.id === member.id ? { ...item, role: next as MemberRole } : item,
+                          ),
+                        );
+                        router.refresh();
+                      }}
+                      options={[
+                        { value: "editor", label: "Editor" },
+                        { value: "viewer", label: "Viewer" },
+                      ]}
+                    />
+                  )}
                   {canRemove ? (
                     <button
                       type="button"
@@ -179,9 +215,14 @@ export function ShareDialog({
             </div>
             <Switch
               checked={enabled}
-              onCheckedChange={(value) => {
+              onCheckedChange={async (value) => {
                 setEnabled(value);
-                void setLinkAccess(projectId, value);
+                try {
+                  await setLinkAccess(projectId, value);
+                } catch {
+                  setEnabled(!value);
+                  toast("Couldn’t update link access", "error");
+                }
               }}
             />
           </div>

@@ -24,6 +24,8 @@ const LINE_SHAPE_OPTIONS = EDGE_LINE_SHAPES.map((shape) => ({
 
 export function EdgeDetails({
   edge,
+  sourceLabel,
+  targetLabel,
   flows,
   onChange,
   onToggleFlow,
@@ -32,6 +34,8 @@ export function EdgeDetails({
   readOnly,
 }: {
   edge?: Edge;
+  sourceLabel?: string;
+  targetLabel?: string;
   flows: DiagramFlow[];
   onChange: (patch: { label?: string; animated?: boolean; lineShape?: EdgeLineShape }) => void;
   onToggleFlow: (flowId: string, edgeId: string) => void;
@@ -53,14 +57,16 @@ export function EdgeDetails({
   const lineShape = data.lineShape ?? "bezier";
   const label = typeof edge.label === "string" ? edge.label : "";
   const containing = flows.filter((flow) => flow.edgeIds.includes(edge.id));
+  const from = sourceLabel || "Source";
+  const to = targetLabel || "Target";
 
   return (
     <div className="flex h-full flex-col overflow-auto p-4">
       <Header title="Edge details" onClose={onClose} />
       <div className="mb-4 rounded-xl border border-[#2a2a2e] bg-[#121214] p-3 text-sm">
         <div className="text-xs text-zinc-500">Connection</div>
-        <div className="mt-1 text-zinc-200">
-          {edge.source} <span className="text-zinc-500">→</span> {edge.target}
+        <div className="mt-1 truncate text-zinc-200" title={`${from} → ${to}`}>
+          {from} <span className="text-zinc-500">→</span> {to}
         </div>
       </div>
       <div className="space-y-1.5">

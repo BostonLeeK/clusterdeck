@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { db, projectInvites } from "@dataflow/db";
+import { db, projectInvites, workspaceInvites } from "@dataflow/db";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { auth, signOut } from "@/lib/auth";
@@ -11,7 +11,11 @@ export const dynamic = "force-dynamic";
 
 export default async function InvitePage({ params }: PageProps<"/invite/[token]">) {
   const { token } = await params;
-  const [invite] = await db.select().from(projectInvites).where(eq(projectInvites.token, token)).limit(1);
+  const [projectInvite] = await db.select().from(projectInvites).where(eq(projectInvites.token, token)).limit(1);
+  const [workspaceInvite] = projectInvite
+    ? [null]
+    : await db.select().from(workspaceInvites).where(eq(workspaceInvites.token, token)).limit(1);
+  const invite = projectInvite ?? workspaceInvite;
 
   const session = await auth();
   const userId = session?.user?.id;
@@ -29,17 +33,22 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
       <AuthShell>
         <h1 className="mb-3 text-center text-[28px] font-semibold tracking-tight">Invite already used</h1>
         <p className="mb-6 text-center text-sm leading-6 text-zinc-400">
-          This invite link is no longer valid. If you were added to the project, open Shared projects.
+          This invite link is no longer valid. If you were added, open your projects.
         </p>
-        <Link href="/projects?filter=shared">
-          <Button className="h-11 w-full rounded-xl">Open shared projects</Button>
+        <Link href="/projects">
+          <Button className="h-11 w-full rounded-xl">Open projects</Button>
         </Link>
       </AuthShell>
     );
   }
 
   const result = await acceptInviteByToken(token, userId, email);
-  if ("ok" in result) redirect(`/editor/${result.projectId}`);
+  if ("ok" in result) {
+    if (result.kind === "workspace") {
+      redirect(`/projects?filter=team&workspace=${result.workspaceId}`);
+    }
+    redirect(`/editor/${result.projectId}`);
+  }
 
   if ("error" in result && result.error === "mismatch") {
     return (
@@ -70,5 +79,5 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
     );
   }
 
-  redirect(`/editor/${invite.projectId}`);
+  redirect("/projects");
 }

@@ -1,31 +1,56 @@
 "use server";
 
 import { SignJWT } from "jose";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, diagrams } from "@dataflow/db";
-import { canEdit, emptySnapshot, type DiagramSnapshot, type InfraNodeData } from "@dataflow/shared";
-import { getAccess, getDiagramWithTrail, requireUser } from "@/lib/queries";
+import { canEdit, emptySnapshot, type DiagramSnapshot, type InfraNodeData, type MemberRole } from "@dataflow/shared";
+import { auth } from "@/lib/auth";
+import { getAccess, getDiagramWithTrail, getPublicProject, requireUser } from "@/lib/queries";
 
 const secret = new TextEncoder().encode(process.env.REALTIME_SECRET ?? "dev-realtime-secret");
 
-export async function issueRealtimeToken(diagramId: string) {
-  const user = await requireUser();
-  const bundle = await getDiagramWithTrail(diagramId);
-  if (!bundle) throw new Error("not found");
-  const access = await getAccess(bundle.diagram.projectId, user.id);
-  if (!access) throw new Error("forbidden");
+export async function issueRealtimeToken(diagramId: string, shareToken?: string) {
+  const session = await auth();
+  if (session?.user?.id) {
+    const user = await requireUser();
+    const bundle = await getDiagramWithTrail(diagramId);
+    if (!bundle) throw new Error("not found");
+    const access = await getAccess(bundle.diagram.projectId, user.id);
+    if (!access) throw new Error("forbidden");
+    const token = await new SignJWT({
+      userId: user.id,
+      diagramId,
+      role: access.role,
+      name: user.name,
+      email: user.email,
+      image: user.image,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("12h")
+      .sign(secret);
+    return { token, role: access.role as MemberRole | "public", readOnly: !canEdit(access.role) };
+  }
+
+  if (!shareToken) throw new Error("forbidden");
+  const data = await getPublicProject(shareToken);
+  if (!data?.root) throw new Error("forbidden");
+  const [diagram] = await db
+    .select({ id: diagrams.id, projectId: diagrams.projectId })
+    .from(diagrams)
+    .where(and(eq(diagrams.id, diagramId), eq(diagrams.projectId, data.project.id)))
+    .limit(1);
+  if (!diagram) throw new Error("forbidden");
+  if (data.project.linkAccess !== "view") throw new Error("forbidden");
+
   const token = await new SignJWT({
-    userId: user.id,
+    userId: "guest",
     diagramId,
-    role: access.role,
-    name: user.name,
-    email: user.email,
-    image: user.image,
+    role: "public",
   })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("12h")
     .sign(secret);
-  return { token, role: access.role, readOnly: !canEdit(access.role) };
+  return { token, role: "public" as const, readOnly: true };
 }
 
 export async function saveDiagramSnapshot(diagramId: string, snapshot: DiagramSnapshot) {

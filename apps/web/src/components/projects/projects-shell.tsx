@@ -5,7 +5,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Bell,
   FileText,
   Folder,
   LayoutGrid,
@@ -22,6 +21,7 @@ import { logout, updateProfileName } from "@/actions/auth";
 import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
+import { TeamManageDialog } from "@/components/projects/team-manage-dialog";
 import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/ui/avatar";
@@ -31,7 +31,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Modal, ModalContent } from "@/components/ui/modal";
 import { FormSelect } from "@/components/ui/select";
 import { timeAgo } from "@/lib/utils";
-import { PROJECT_TEMPLATES, type DiagramSnapshot } from "@dataflow/shared";
+import { PROJECT_TEMPLATES, type DiagramSnapshot, type WorkspaceRole } from "@dataflow/shared";
 
 type ProjectCard = {
   id: string;
@@ -52,12 +52,25 @@ export function ProjectsShell({
   projects,
   filter,
   workspaceId,
+  team,
 }: {
   user: { name?: string | null; email?: string | null; image?: string | null };
-  workspaces: { id: string; name: string }[];
+  workspaces: { id: string; name: string; role: WorkspaceRole }[];
   projects: ProjectCard[];
   filter: string;
   workspaceId?: string;
+  team: {
+    workspaceId: string;
+    role: WorkspaceRole;
+    members: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      role: WorkspaceRole;
+    }[];
+    invites: { id: string; email: string; role: "admin" | "member" }[];
+  } | null;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -66,6 +79,7 @@ export function ProjectsShell({
   const activeFilter = filter === "trash" || filter === "templates" || filter === "team" ? "all" : filter;
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const activeWorkspace = workspaces.find((item) => item.id === workspaceId) ?? workspaces[0];
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -188,30 +202,52 @@ export function ProjectsShell({
             </kbd>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {filter === "team" && team && activeWorkspace ? (
+              <TeamManageDialog
+                workspaceId={team.workspaceId}
+                workspaceName={activeWorkspace.name}
+                currentRole={team.role}
+                members={team.members}
+                invites={team.invites}
+              />
+            ) : null}
             <CreateProjectButton
               workspaceId={filter === "team" ? workspaceId : undefined}
               triggerClassName="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#6b74fb]"
             >
               <Plus className="size-4" /> New project
             </CreateProjectButton>
-            <Menu>
-              <MenuTrigger asChild>
-                <button className="grid size-10 place-items-center rounded-xl text-zinc-400 hover:bg-white/5">
-                  <Bell className="size-4" />
-                </button>
-              </MenuTrigger>
-              <MenuContent>
-                <div className="px-2 py-3 text-sm text-zinc-500">No notifications</div>
-              </MenuContent>
-            </Menu>
           </div>
         </header>
 
         <main className="flex-1 px-8 pt-6 pb-10">
-          <p className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">Projects</p>
-          <h1 className="mt-1 text-[32px] leading-none font-semibold tracking-tight">Projects</h1>
-          <p className="mt-2 text-sm text-zinc-500">Create and manage your infrastructure diagrams</p>
+          <p className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">
+            {filter === "trash" ? "Trash" : filter === "templates" ? "Templates" : "Projects"}
+          </p>
+          <h1 className="mt-1 text-[32px] leading-none font-semibold tracking-tight">
+            {filter === "team" && activeWorkspace
+              ? activeWorkspace.name
+              : filter === "trash"
+                ? "Trash"
+                : filter === "shared"
+                  ? "Shared with me"
+                  : filter === "templates"
+                    ? "Templates"
+                    : "Projects"}
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            {filter === "team"
+              ? "Team projects shared with everyone in this workspace."
+              : filter === "trash"
+                ? "Deleted projects stay here until you restore or permanently remove them."
+                : filter === "shared"
+                  ? "Projects others have invited you to."
+                  : filter === "templates"
+                    ? "Start faster with ready-made infrastructure diagrams."
+                    : "Create and manage your infrastructure diagrams"}
+          </p>
 
+          {filter !== "trash" && filter !== "templates" ? (
           <div className="mt-6 mb-5 flex items-center justify-between">
             <div className="flex items-center gap-1">
               {(["all", "personal", "shared"] as const).map((item) => (
@@ -255,7 +291,13 @@ export function ProjectsShell({
               </div>
             </div>
           </div>
+          ) : (
+            <div className="mt-6 mb-5" />
+          )}
 
+          {filter !== "templates" && projects.length === 0 ? (
+            <EmptyProjects filter={filter} workspaceId={workspaceId} />
+          ) : (
           <div className={view === "grid" ? "grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
             {filter === "templates"
               ? PROJECT_TEMPLATES.map((template) => (
@@ -372,8 +414,55 @@ export function ProjectsShell({
               </CreateProjectButton>
             ) : null}
           </div>
+          )}
         </main>
       </div>
+    </div>
+  );
+}
+
+function EmptyProjects({ filter, workspaceId }: { filter: string; workspaceId?: string }) {
+  const copy =
+    filter === "trash"
+      ? {
+          title: "Trash is empty",
+          body: "Projects you delete will show up here.",
+        }
+      : filter === "shared"
+        ? {
+            title: "Nothing shared with you yet",
+            body: "When someone invites you to a project, it will appear here.",
+          }
+        : filter === "team"
+          ? {
+              title: "No team projects yet",
+              body: "Create a project in this team to get started.",
+            }
+          : filter === "personal"
+            ? {
+                title: "No personal projects",
+                body: "Create a project to start mapping your infrastructure.",
+              }
+            : {
+                title: "No projects yet",
+                body: "Create your first diagram to get started.",
+              };
+
+  return (
+    <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 py-16 text-center">
+      <div className="grid size-12 place-items-center rounded-full border border-border bg-card text-zinc-500">
+        {filter === "trash" ? <Trash2 className="size-5" /> : filter === "shared" ? <UserPlus className="size-5" /> : <Folder className="size-5" />}
+      </div>
+      <h2 className="mt-4 text-base font-medium text-zinc-100">{copy.title}</h2>
+      <p className="mt-1 max-w-sm text-sm text-zinc-500">{copy.body}</p>
+      {filter !== "trash" && filter !== "shared" ? (
+        <CreateProjectButton
+          workspaceId={filter === "team" ? workspaceId : undefined}
+          triggerClassName="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#6b74fb]"
+        >
+          <Plus className="size-4" /> New project
+        </CreateProjectButton>
+      ) : null}
     </div>
   );
 }
