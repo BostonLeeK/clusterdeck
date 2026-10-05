@@ -1,7 +1,7 @@
 {
   "name": "dataflow",
   "private": true,
-  "packageManager": "pnpm@12.9.1",
+  "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=22"
   },
