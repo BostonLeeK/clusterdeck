@@ -4,7 +4,7 @@ import { hash } from "@node-rs/argon2";
 import { eq } from "drizzle-orm";
 import { AuthError } from "next-auth";
 import { db, users } from "@dataflow/db";
-import { signIn, signOut } from "@/lib/auth";
+import { auth, signIn, signOut } from "@/lib/auth";
 import {
   RESET_TTL_MS,
   VERIFY_TTL_MS,
@@ -216,6 +216,18 @@ export async function getResetTokenState(token: string) {
 
 export async function oauthSignIn(provider: "github" | "google", callbackUrl?: string) {
   await signIn(provider, { redirectTo: safeCallbackUrl(callbackUrl) });
+}
+
+export async function updateProfileName(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "You must be signed in." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Name is required." };
+  if (name.length > 80) return { error: "Name must be 80 characters or less." };
+
+  await db.update(users).set({ name }).where(eq(users.id, session.user.id));
+  return { ok: true as const, name };
 }
 
 export async function logout() {

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -17,15 +18,17 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { logout } from "@/actions/auth";
+import { logout, updateProfileName } from "@/actions/auth";
 import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
 import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
 import { Avatar } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
+import { Modal, ModalContent } from "@/components/ui/modal";
 import { timeAgo } from "@/lib/utils";
 import { PROJECT_TEMPLATES, type DiagramSnapshot } from "@dataflow/shared";
 
@@ -60,6 +63,8 @@ export function ProjectsShell({
   const pathname = usePathname();
   const view = params.get("view") === "list" ? "list" : "grid";
   const activeFilter = filter === "trash" || filter === "templates" || filter === "team" ? "all" : filter;
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -105,9 +110,9 @@ export function ProjectsShell({
           </Nav>
         </nav>
         <div className="mt-auto flex items-center justify-between px-1 pt-4">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Avatar name={user.name} email={user.email} image={user.image} />
-            <span className="text-sm">{user.name ?? user.email}</span>
+            <span className="truncate text-sm">{user.name ?? user.email}</span>
           </div>
           <Menu>
             <MenuTrigger asChild>
@@ -116,11 +121,54 @@ export function ProjectsShell({
               </button>
             </MenuTrigger>
             <MenuContent>
+              <MenuItem
+                onSelect={() => {
+                  setProfileError(null);
+                  setProfileOpen(true);
+                }}
+              >
+                Edit profile
+              </MenuItem>
               <MenuItem onSelect={() => logout()}>Sign out</MenuItem>
             </MenuContent>
           </Menu>
         </div>
       </aside>
+
+      <Modal open={profileOpen} onOpenChange={setProfileOpen}>
+        <ModalContent title="Edit profile" description="Update how your name appears across ClusterDeck.">
+          <form
+            className="space-y-3"
+            action={async (formData) => {
+              setProfileError(null);
+              const result = await updateProfileName(formData);
+              if (result?.error) {
+                setProfileError(result.error);
+                return;
+              }
+              setProfileOpen(false);
+              router.refresh();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-name">Display name</Label>
+              <Input
+                id="profile-name"
+                name="name"
+                required
+                maxLength={80}
+                defaultValue={user.name ?? ""}
+                placeholder="Your name"
+              />
+            </div>
+            <p className="text-xs text-zinc-500">{user.email}</p>
+            {profileError ? <p className="text-sm text-red-400">{profileError}</p> : null}
+            <Button type="submit" className="w-full">
+              Save name
+            </Button>
+          </form>
+        </ModalContent>
+      </Modal>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 px-6 pt-4 pb-2">

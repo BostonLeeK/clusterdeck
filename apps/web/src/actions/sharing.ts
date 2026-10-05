@@ -59,7 +59,9 @@ export async function inviteMember(projectId: string, email: string, role: Membe
 
   await db.update(projects).set({ kind: "shared", updatedAt: new Date() }).where(eq(projects.id, projectId));
 
-  const actionUrl = `${appBaseUrl()}/invite/${inviteToken}`;
+  const actionUrl = existingUser
+    ? `${appBaseUrl()}/editor/${projectId}`
+    : `${appBaseUrl()}/invite/${inviteToken}`;
 
   try {
     await sendEmail({

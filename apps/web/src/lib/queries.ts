@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   diagrams,
@@ -73,7 +73,13 @@ export async function listProjects(opts: {
   sort?: "updated" | "name";
   workspaceId?: string;
 }) {
-  const conditions = [or(eq(projects.ownerId, opts.userId), eq(projectMembers.userId, opts.userId))];
+  const memberExists = exists(
+    db
+      .select({ one: sql`1` })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, opts.userId))),
+  );
+  const conditions = [or(eq(projects.ownerId, opts.userId), memberExists)];
   if (opts.filter === "trash") conditions.push(isNotNull(projects.deletedAt));
   else conditions.push(isNull(projects.deletedAt));
   if (opts.filter === "personal") conditions.push(eq(projects.kind, "personal"));
@@ -88,7 +94,7 @@ export async function listProjects(opts: {
   }
 
   const rows = await db
-    .selectDistinct({
+    .select({
       id: projects.id,
       name: projects.name,
       description: projects.description,
@@ -98,7 +104,6 @@ export async function listProjects(opts: {
       ownerId: projects.ownerId,
     })
     .from(projects)
-    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
     .where(and(...conditions))
     .orderBy(opts.sort === "name" ? projects.name : desc(projects.updatedAt));
 
