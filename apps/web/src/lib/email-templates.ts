@@ -147,9 +147,9 @@ function layout({
                 <tr>
                   <td align="left" style="vertical-align:middle;padding-bottom:18px;">${brandLockup("sm")}</td>
                   <td align="right" style="vertical-align:middle;padding-bottom:18px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;white-space:nowrap;">
-                    <a href="${escapeHtml(base)}" style="color:#a1a1aa;text-decoration:none;">Docs</a>
+                    <a href="${escapeHtml(base)}/docs" style="color:#a1a1aa;text-decoration:none;">Docs</a>
                     <span style="color:#3f3f46;">&nbsp;&nbsp;&nbsp;</span>
-                    <a href="${escapeHtml(base)}" style="color:#a1a1aa;text-decoration:none;">Support</a>
+                    <a href="${escapeHtml(base)}/support" style="color:#a1a1aa;text-decoration:none;">Support</a>
                     <span style="color:#3f3f46;">&nbsp;&nbsp;&nbsp;</span>
                     <a href="${escapeHtml(base)}/sign-in" style="color:#a1a1aa;text-decoration:none;">Login</a>
                   </td>
