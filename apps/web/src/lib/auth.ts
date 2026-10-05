@@ -69,6 +69,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user?.id) {
         token.sub = user.id;
         if (user.email) token.email = user.email;
+        if (user.name) token.name = user.name;
+        if (user.image) token.picture = user.image;
         return token;
       }
       if (token.sub) {
@@ -83,7 +85,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     session({ session, token }) {
-      if (session.user && token.sub) session.user.id = token.sub;
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
+        if (typeof token.name === "string") session.user.name = token.name;
+        if (typeof token.picture === "string") session.user.image = token.picture;
+      }
       return session;
     },
   },

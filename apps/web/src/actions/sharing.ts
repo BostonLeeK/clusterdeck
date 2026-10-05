@@ -86,12 +86,47 @@ export async function inviteMember(projectId: string, email: string, role: Membe
 export async function updateMemberRole(projectId: string, userId: string, role: MemberRole) {
   const user = await requireUser();
   const access = await getAccess(projectId, user.id);
-  if (!access || !canShare(access.role)) throw new Error("forbidden");
+  if (!access || !canShare(access.role)) return { error: "You don’t have permission to change roles." };
+  if (access.project.ownerId === userId && role !== "owner") {
+    return { error: "Project owner role can’t be changed." };
+  }
   await db
     .update(projectMembers)
     .set({ role })
     .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
   revalidatePath(`/editor/${projectId}`);
+  return { ok: true as const };
+}
+
+export async function removeMember(projectId: string, userId: string) {
+  const user = await requireUser();
+  const access = await getAccess(projectId, user.id);
+  if (!access || !canShare(access.role)) return { error: "You don’t have permission to remove members." };
+  if (access.project.ownerId === userId) {
+    return { error: "You can’t remove the project owner." };
+  }
+  if (user.id === userId) {
+    return { error: "You can’t remove yourself. Ask another owner." };
+  }
+
+  const [target] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  await db
+    .delete(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
+
+  if (target?.email) {
+    await db
+      .delete(projectInvites)
+      .where(and(eq(projectInvites.projectId, projectId), eq(projectInvites.email, target.email)));
+  }
+
+  revalidatePath(`/editor/${projectId}`);
+  return { ok: true as const };
 }
 
 export async function setLinkAccess(projectId: string, enabled: boolean) {

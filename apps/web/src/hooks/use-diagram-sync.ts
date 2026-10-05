@@ -597,8 +597,17 @@ export function useDiagramSync(opts: {
     cursorTimer.current = now;
     const awareness = providerRef.current?.awareness;
     if (!awareness) return;
+    const user = userRef.current;
+    const seed = user.id || user.email || user.name || "anon";
     const current = awareness.getLocalState()?.user ?? {};
-    awareness.setLocalStateField("user", { ...current, cursor: { x, y } });
+    awareness.setLocalStateField("user", {
+      ...current,
+      userId: user.id ?? current.userId,
+      name: user.name ?? user.email ?? current.name ?? "Anonymous",
+      image: user.image ?? current.image ?? null,
+      color: current.color ?? colorFor(seed),
+      cursor: { x, y },
+    });
   }, []);
 
   const sendChat = useCallback((text: string) => {

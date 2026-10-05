@@ -31,6 +31,7 @@ export default async function EditorPage({
       projectName={bundle.project.name}
       shareToken={bundle.project.shareToken}
       linkAccess={bundle.project.linkAccess}
+      ownerId={bundle.project.ownerId}
       members={bundle.members}
       trail={trail.trail}
       snapshot={snapshot}

@@ -15,6 +15,7 @@ export default async function PublicPage({ params }: PageProps<"/p/[shareToken]"
       projectName={data.project.name}
       shareToken={data.project.shareToken}
       linkAccess={data.project.linkAccess}
+      ownerId={data.project.ownerId}
       members={[]}
       trail={[{ id: data.root.id, name: data.root.name }]}
       snapshot={data.root.snapshot}

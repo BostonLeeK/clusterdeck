@@ -8,8 +8,8 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  ViewportPortal,
   useReactFlow,
+  useStore,
   type Node,
 } from "@xyflow/react";
 import {
@@ -73,6 +73,7 @@ export function EditorApp(props: {
   projectName: string;
   shareToken: string;
   linkAccess: "none" | "view";
+  ownerId: string;
   members: Member[];
   trail: { id: string; name: string }[];
   snapshot: DiagramSnapshot;
@@ -322,10 +323,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     return () => window.removeEventListener("keydown", onKey);
   }, [deleteSelection, groupSelection, ungroupSelection]);
 
-  const onPaneMouseMove = useCallback(
+  const onPointerMoveCanvas = useCallback(
     (event: MouseEvent) => {
-      const bounds = wrapper.current?.getBoundingClientRect();
-      if (!bounds) return;
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
@@ -334,6 +333,23 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     },
     [screenToFlowPosition, sync.setCursor],
   );
+
+  const presenceUsers = useMemo(() => {
+    return sync.presence.map((user) => {
+      const member =
+        props.members.find((item) => item.id === user.userId) ??
+        props.members.find(
+          (item) =>
+            user.name &&
+            (item.name === user.name || item.email === user.name),
+        );
+      return {
+        ...user,
+        name: user.name || member?.name || member?.email || "User",
+        image: user.image || member?.image || null,
+      };
+    });
+  }, [props.members, sync.presence]);
 
   return (
     <div className="flex h-screen flex-col bg-[#0b0b0d]">
@@ -388,17 +404,21 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           ) : (
             <>
               <div className="flex items-center gap-2 pr-1">
-                {sync.presence.length ? (
-                  <div className="flex -space-x-1.5">
-                    {sync.presence.map((user) => (
-                      <span key={user.clientId} title={user.name ?? "Collaborator"} className="relative">
+                {presenceUsers.length ? (
+                  <div className="flex items-center -space-x-1.5">
+                    {presenceUsers.map((user) => (
+                      <span
+                        key={user.clientId}
+                        title={user.name ?? "Collaborator"}
+                        className="relative inline-flex shrink-0"
+                      >
                         <Avatar
                           name={user.name}
                           image={user.image}
                           className="size-6 ring-2 ring-[#0b0b0d]"
                         />
                         <span
-                          className="absolute right-0 bottom-0 size-1.5 rounded-full ring-1 ring-[#0b0b0d]"
+                          className="absolute right-0 bottom-0 size-2 rounded-full border border-[#0b0b0d]"
                           style={{ background: user.color }}
                         />
                       </span>
@@ -406,15 +426,19 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                   </div>
                 ) : null}
                 <span
-                  className={`size-1.5 rounded-full ${sync.connected ? "bg-emerald-400" : "bg-zinc-600"}`}
+                  className={`text-[10px] font-medium ${sync.connected ? "text-emerald-400" : "text-amber-400"}`}
                   title={sync.connected ? "Realtime connected" : "Connecting…"}
-                />
+                >
+                  {sync.connected ? "Live" : "…"}
+                </span>
               </div>
               <ShareDialog
                 projectId={props.projectId}
                 shareToken={props.shareToken}
                 linkAccess={props.linkAccess}
                 members={props.members}
+                ownerId={props.ownerId}
+                currentUserId={props.user.id ?? undefined}
               />
               <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
               <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.undo}>
@@ -441,7 +465,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             />
           </aside>
         ) : null}
-        <div className="relative min-w-0 flex-1" ref={wrapper}>
+        <div className="relative min-w-0 flex-1" ref={wrapper} onMouseMove={onPointerMoveCanvas}>
           {!isPublic && !leftOpen ? (
             <button
               type="button"
@@ -478,7 +502,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </div>
           ) : null}
           <DiagramPerspectiveProvider value={perspectiveValue}>
-            <ReactFlow
+            <div className="absolute inset-0">
+              <ReactFlow
               nodes={sync.nodes}
               edges={sync.edges}
               nodeTypes={nodeTypes}
@@ -561,7 +586,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                   edgeId: edge.id,
                 });
               }}
-              onPaneMouseMove={onPaneMouseMove}
+              onPaneMouseMove={onPointerMoveCanvas}
               onDrop={(event) => {
                 if (isPublic) return;
                 event.preventDefault();
@@ -606,39 +631,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 nodeColor="#27272a"
                 nodeStrokeWidth={1}
               />
-              {!isPublic
-                ? sync.presence.map((user) =>
-                    user.cursor ? (
-                      <ViewportPortal key={user.clientId}>
-                        <div
-                          className="pointer-events-none absolute z-50"
-                          style={{
-                            transform: `translate(${user.cursor.x}px, ${user.cursor.y}px)`,
-                          }}
-                        >
-                          <svg width="16" height="20" viewBox="0 0 16 20" fill="none" className="-ml-0.5 -mt-0.5">
-                            <path
-                              d="M1 1L1 15.5L5.2 11.8L8.2 18.2L10.4 17.2L7.3 10.6L12.5 10.6L1 1Z"
-                              fill={user.color}
-                              stroke="#0b0b0d"
-                              strokeWidth="1"
-                            />
-                          </svg>
-                          <div
-                            className="mt-0.5 ml-3 flex items-center gap-1.5 rounded-full py-0.5 pr-2 pl-0.5 shadow-lg"
-                            style={{ background: user.color }}
-                          >
-                            <Avatar name={user.name} image={user.image} className="size-4 ring-1 ring-black/20" />
-                            <span className="max-w-28 truncate text-[10px] font-semibold text-zinc-950">
-                              {user.name ?? "User"}
-                            </span>
-                          </div>
-                        </div>
-                      </ViewportPortal>
-                    ) : null,
-                  )
-                : null}
             </ReactFlow>
+            <RemoteCursors users={isPublic ? [] : presenceUsers} />
+            </div>
           </DiagramPerspectiveProvider>
           {!isPublic ? (
             <PerspectiveBar
@@ -911,6 +906,54 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           </aside>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function RemoteCursors({
+  users,
+}: {
+  users: {
+    clientId: number;
+    name?: string;
+    image?: string | null;
+    color: string;
+    cursor?: { x: number; y: number };
+  }[];
+}) {
+  const transform = useStore((state) => state.transform);
+  const [tx, ty, zoom] = transform;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
+      {users.map((user) => {
+        if (!user.cursor) return null;
+        const x = user.cursor.x * zoom + tx;
+        const y = user.cursor.y * zoom + ty;
+        return (
+          <div
+            key={user.clientId}
+            className="absolute top-0 left-0 will-change-transform"
+            style={{ transform: `translate(${x}px, ${y}px)` }}
+          >
+            <svg width="16" height="20" viewBox="0 0 16 20" fill="none" className="-ml-0.5 -mt-0.5 drop-shadow">
+              <path
+                d="M1 1L1 15.5L5.2 11.8L8.2 18.2L10.4 17.2L7.3 10.6L12.5 10.6L1 1Z"
+                fill={user.color}
+                stroke="#0b0b0d"
+                strokeWidth="1"
+              />
+            </svg>
+            <div
+              className="mt-0.5 ml-3 flex max-w-[9rem] items-center gap-1.5 rounded-full py-0.5 pr-2 pl-0.5 shadow-lg"
+              style={{ background: user.color }}
+            >
+              <Avatar name={user.name} image={user.image} className="size-4 text-[8px] ring-1 ring-black/20" />
+              <span className="truncate text-[10px] font-semibold text-zinc-950">{user.name ?? "User"}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
