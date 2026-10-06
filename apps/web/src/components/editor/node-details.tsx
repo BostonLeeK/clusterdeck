@@ -575,32 +575,38 @@ function InfraDetails({
                 value={shape}
                 options={SHAPE_OPTIONS}
                 variant="icons"
+                stretch
                 onChange={(next) => patch({ shape: next })}
               />
             </Field>
-            <div className="mt-3">
-              <Label>Accent color</Label>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-3 space-y-2">
+              <div className="flex h-5 items-center justify-between">
+                <Label>Accent color</Label>
+                {data.accentColor ? (
+                  <button
+                    type="button"
+                    className="text-[11px] text-zinc-500 hover:text-zinc-200"
+                    onClick={() => patch({ accentColor: undefined })}
+                  >
+                    Reset to default
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-10 gap-1.5">
                 {ACCENT_SWATCHES.map((color) => (
                   <button
                     key={color}
                     type="button"
                     title={color}
+                    aria-pressed={accent === color}
                     className={cn(
-                      "size-6 rounded-full border-2",
-                      accent === color ? "border-white" : "border-transparent",
+                      "aspect-square w-full rounded-full ring-offset-2 ring-offset-[#121214] transition hover:scale-110",
+                      accent === color && "ring-2 ring-white/80",
                     )}
                     style={{ background: color }}
                     onClick={() => patch({ accentColor: color })}
                   />
                 ))}
-                <button
-                  type="button"
-                  className="h-6 rounded-full border border-[#2a2a2e] px-2 text-[10px] text-zinc-500 hover:text-white"
-                  onClick={() => patch({ accentColor: undefined })}
-                >
-                  Reset
-                </button>
               </div>
             </div>
           </div>

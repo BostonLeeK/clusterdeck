@@ -18,6 +18,7 @@ export function SegmentedControl<T extends string>({
   className,
   size = "md",
   variant = "labeled",
+  stretch = false,
 }: {
   value: T;
   options: SegmentOption<T>[];
@@ -26,14 +27,16 @@ export function SegmentedControl<T extends string>({
   className?: string;
   size?: "sm" | "md";
   variant?: "labeled" | "icons";
+  stretch?: boolean;
 }) {
   const iconsOnly = variant === "icons";
+  const fill = !iconsOnly || stretch;
 
   return (
     <div
       className={cn(
         "flex flex-wrap gap-0.5 rounded-xl border border-[#2a2a2e] bg-[#121214] p-0.5",
-        iconsOnly ? "w-fit" : "w-full",
+        fill ? "w-full" : "w-fit",
         className,
       )}
     >
@@ -48,7 +51,7 @@ export function SegmentedControl<T extends string>({
             aria-label={option.label}
             className={cn(
               "inline-flex items-center justify-center gap-1.5 rounded-lg text-[11px] font-medium capitalize transition",
-              iconsOnly
+              iconsOnly && !stretch
                 ? size === "sm"
                   ? "size-8 shrink-0"
                   : "size-9 shrink-0"
