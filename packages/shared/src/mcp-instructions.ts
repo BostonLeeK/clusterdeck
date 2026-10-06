@@ -12,7 +12,7 @@ export function diagramAgentInstructions(): string {
   return [
     "ClusterDeck stores infrastructure diagrams. Each diagram has nodes and edges on a shared canvas.",
     "Read a diagram with get_diagram, then change it with update_diagram. Use list_diagrams to find ids.",
-    "MCP access is off for every diagram until someone enables it. list_diagrams returns only enabled diagrams. Anything else is not found.",
+    "MCP access is off for every project until someone enables it. Enabling a project opens its root and every inner diagram. list_diagrams returns only those. Anything else is not found.",
     "Only use the type ids, shapes, and technology ids listed here.",
     "",
     "Node kinds:",

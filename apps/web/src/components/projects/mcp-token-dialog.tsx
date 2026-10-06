@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   generateMcpToken,
-  listMcpDiagramAccess,
+  listMcpProjectAccess,
   mcpTokenStatus,
   revokeMcpToken,
-  setDiagramMcpEnabled,
-  type McpDiagramAccess,
+  setProjectMcpEnabled,
+  type McpProjectAccess,
 } from "@/actions/mcp";
 import { Button } from "@/components/ui/button";
 import { Modal, ModalContent } from "@/components/ui/modal";
@@ -23,7 +23,7 @@ export function McpTokenDialog({
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState<string | null>(null);
-  const [diagrams, setDiagrams] = useState<McpDiagramAccess[]>([]);
+  const [items, setItems] = useState<McpProjectAccess[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -38,9 +38,9 @@ export function McpTokenDialog({
       setCreatedAt(status.createdAt);
       setEndpoint(status.endpoint);
     });
-    void listMcpDiagramAccess()
-      .then(setDiagrams)
-      .catch(() => setError("Could not load diagrams."));
+    void listMcpProjectAccess()
+      .then(setItems)
+      .catch(() => setError("Could not load projects."));
   }, [open]);
 
   async function generate() {
@@ -73,16 +73,16 @@ export function McpTokenDialog({
     }
   }
 
-  async function toggle(diagramId: string, enabled: boolean) {
-    const previous = diagrams;
-    setDiagrams((current) => current.map((item) => (item.id === diagramId ? { ...item, mcpEnabled: enabled } : item)));
-    setBusyId(diagramId);
+  async function toggle(projectId: string, enabled: boolean) {
+    const previous = items;
+    setItems((current) => current.map((item) => (item.id === projectId ? { ...item, mcpEnabled: enabled } : item)));
+    setBusyId(projectId);
     setError(null);
     try {
-      await setDiagramMcpEnabled(diagramId, enabled);
+      await setProjectMcpEnabled(projectId, enabled);
     } catch {
-      setDiagrams(previous);
-      setError("Could not update diagram access.");
+      setItems(previous);
+      setError("Could not update project access.");
     } finally {
       setBusyId(null);
     }
@@ -93,18 +93,11 @@ export function McpTokenDialog({
     setCopied(kind);
   }
 
-  const groups = new Map<string, { projectId: string; projectName: string; items: McpDiagramAccess[] }>();
-  for (const item of diagrams) {
-    const group = groups.get(item.projectId) ?? { projectId: item.projectId, projectName: item.projectName, items: [] };
-    group.items.push(item);
-    groups.set(item.projectId, group);
-  }
-
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent
         title="MCP token"
-        description="A personal token for an agent. It can open only the diagrams you turn on below."
+        description="A personal token for an agent. It can open only the projects you turn on below."
       >
         <div className="space-y-4">
           <div className="space-y-1">
@@ -140,25 +133,20 @@ export function McpTokenDialog({
             </p>
           )}
           <div className="space-y-1">
-            <div className="text-xs text-zinc-500">Diagram access</div>
-            <p className="text-xs text-zinc-600">Off until you enable a diagram.</p>
-            <div className="max-h-64 space-y-3 overflow-y-auto rounded-lg border border-[#2a2a2e] px-2 py-2">
-              {groups.size === 0 ? (
-                <p className="px-1 py-4 text-center text-xs text-zinc-600">No diagrams you can edit.</p>
+            <div className="text-xs text-zinc-500">Project access</div>
+            <p className="text-xs text-zinc-600">Off until you enable a project. It covers every inner diagram.</p>
+            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-[#2a2a2e] px-2 py-2">
+              {items.length === 0 ? (
+                <p className="px-1 py-4 text-center text-xs text-zinc-600">No projects you can edit.</p>
               ) : (
-                Array.from(groups.values()).map((group) => (
-                  <div key={group.projectId} className="space-y-1">
-                    <div className="px-1 text-[11px] tracking-wide text-zinc-500 uppercase">{group.projectName}</div>
-                    {group.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-3 px-1 py-1">
-                        <span className="min-w-0 truncate text-sm text-zinc-200">{item.label}</span>
-                        <Switch
-                          checked={item.mcpEnabled}
-                          disabled={busyId === item.id}
-                          onCheckedChange={(value) => void toggle(item.id, value)}
-                        />
-                      </div>
-                    ))}
+                items.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 px-1 py-1">
+                    <span className="min-w-0 truncate text-sm text-zinc-200">{item.name}</span>
+                    <Switch
+                      checked={item.mcpEnabled}
+                      disabled={busyId === item.id}
+                      onCheckedChange={(value) => void toggle(item.id, value)}
+                    />
                   </div>
                 ))
               )}

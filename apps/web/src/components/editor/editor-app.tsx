@@ -38,7 +38,7 @@ import type {
 } from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
 import { openOrCreateInnerDiagram } from "@/actions/diagrams";
-import { setDiagramMcpEnabled } from "@/actions/mcp";
+import { setProjectMcpEnabled } from "@/actions/mcp";
 import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
 import { LabeledEdge } from "@/components/editor/labeled-edge";
@@ -119,7 +119,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
 
   useEffect(() => {
     setMcpOn(Boolean(props.mcpEnabled));
-  }, [props.diagramId, props.mcpEnabled]);
+  }, [props.mcpEnabled]);
 
   useEffect(() => {
     if (!isGuestUser(props.user)) {
@@ -617,13 +617,16 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </span>
           </div>
           {!isPublic && !sync.readOnly ? (
-            <div className="flex items-center gap-2 pr-1 text-[11px] text-zinc-400" title="Allow your MCP token to read and edit this diagram">
+            <div
+              className="flex items-center gap-2 pr-1 text-[11px] text-zinc-400"
+              title="Allow your MCP token to read and edit this project, including inner diagrams"
+            >
               MCP
               <Switch
                 checked={mcpOn}
                 onCheckedChange={(value) => {
                   setMcpOn(value);
-                  void setDiagramMcpEnabled(props.diagramId, value).catch(() => setMcpOn(!value));
+                  void setProjectMcpEnabled(props.projectId, value).catch(() => setMcpOn(!value));
                 }}
               />
             </div>

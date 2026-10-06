@@ -105,7 +105,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
   server.registerTool(
     "list_diagrams",
     {
-      description: "List diagrams this token is allowed to open. Access is off until someone enables the diagram. Use the returned id with get_diagram and update_diagram.",
+      description: "List diagrams this token is allowed to open, including inner diagrams. Access is off until someone enables the project. Use the returned id with get_diagram and update_diagram.",
       inputSchema: z.object({ query: z.string().optional() }),
     },
     async ({ query }) => {
@@ -121,7 +121,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
         })
         .from(diagrams)
         .innerJoin(projects, eq(diagrams.projectId, projects.id))
-        .where(and(visibleProjects(userId), eq(diagrams.mcpEnabled, true)))
+        .where(and(visibleProjects(userId), eq(projects.mcpEnabled, true)))
         .orderBy(desc(diagrams.updatedAt))
         .limit(200);
       const items = needle
@@ -145,9 +145,10 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
             name: diagrams.name,
             projectId: diagrams.projectId,
             parentDiagramId: diagrams.parentDiagramId,
-            mcpEnabled: diagrams.mcpEnabled,
+            mcpEnabled: projects.mcpEnabled,
           })
           .from(diagrams)
+          .innerJoin(projects, eq(diagrams.projectId, projects.id))
           .where(eq(diagrams.id, diagramId))
           .limit(1);
         if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
@@ -182,8 +183,9 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
     async ({ diagramId, upsertNodes, deleteNodeIds, upsertEdges, deleteEdgeIds }) => {
       try {
         const [row] = await db
-          .select({ projectId: diagrams.projectId, mcpEnabled: diagrams.mcpEnabled })
+          .select({ projectId: diagrams.projectId, mcpEnabled: projects.mcpEnabled })
           .from(diagrams)
+          .innerJoin(projects, eq(diagrams.projectId, projects.id))
           .where(eq(diagrams.id, diagramId))
           .limit(1);
         if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
