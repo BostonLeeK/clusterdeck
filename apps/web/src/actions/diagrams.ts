@@ -133,6 +133,89 @@ export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string
   return { diagramId: created.id, nodeCount: 0 };
 }
 
+type DiagramRow = typeof diagrams.$inferSelect;
+type InnerDiagramLink = { diagramId: string; nodeCount: number };
+
+const MAX_CLONE_DEPTH = 12;
+
+async function cloneDiagramTree(
+  source: DiagramRow,
+  target: { projectId: string; parentDiagramId: string; parentNodeId: string },
+  depth = 0,
+): Promise<InnerDiagramLink> {
+  const children = depth < MAX_CLONE_DEPTH
+    ? await db.select().from(diagrams).where(eq(diagrams.parentDiagramId, source.id))
+    : [];
+  const [created] = await db
+    .insert(diagrams)
+    .values({
+      projectId: target.projectId,
+      parentDiagramId: target.parentDiagramId,
+      parentNodeId: target.parentNodeId,
+      name: source.name,
+      snapshot: source.snapshot,
+    })
+    .returning({ id: diagrams.id });
+  if (!created) throw new Error("failed");
+
+  const links = new Map<string, InnerDiagramLink>();
+  for (const node of source.snapshot.nodes) {
+    if (node.data.kind !== "infra") continue;
+    const inner = pickInnerDiagram(children.filter((child) => child.parentNodeId === node.id));
+    if (!inner) continue;
+    links.set(
+      node.id,
+      await cloneDiagramTree(inner, { projectId: target.projectId, parentDiagramId: created.id, parentNodeId: node.id }, depth + 1),
+    );
+  }
+
+  const hasStaleLinks = source.snapshot.nodes.some(
+    (node) => node.data.kind === "infra" && node.data.childDiagramId && !links.has(node.id),
+  );
+  if (links.size || hasStaleLinks) {
+    const snapshot: DiagramSnapshot = {
+      ...source.snapshot,
+      nodes: source.snapshot.nodes.map((node) => {
+        if (node.data.kind !== "infra" || (!node.data.childDiagramId && !links.has(node.id))) return node;
+        const link = links.get(node.id);
+        return {
+          ...node,
+          data: link
+            ? { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount }
+            : { ...node.data, childDiagramId: undefined },
+        };
+      }),
+    };
+    await db.update(diagrams).set({ snapshot }).where(eq(diagrams.id, created.id));
+  }
+
+  return { diagramId: created.id, nodeCount: innerContentCount(source.snapshot) };
+}
+
+export async function cloneInnerDiagrams(
+  diagramId: string,
+  copies: { nodeId: string; sourceDiagramId: string }[],
+): Promise<Record<string, InnerDiagramLink>> {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access || !canEdit(access.role)) throw new Error("forbidden");
+
+  const result: Record<string, InnerDiagramLink> = {};
+  for (const copy of copies) {
+    const [source] = await db.select().from(diagrams).where(eq(diagrams.id, copy.sourceDiagramId)).limit(1);
+    if (!source) continue;
+    if (source.projectId !== bundle.diagram.projectId && !(await getAccess(source.projectId, user.id))) continue;
+    result[copy.nodeId] = await cloneDiagramTree(source, {
+      projectId: bundle.diagram.projectId,
+      parentDiagramId: diagramId,
+      parentNodeId: copy.nodeId,
+    });
+  }
+  return result;
+}
+
 export type InnerNodeOption = { id: string; title: string; kind: "infra" | "group" };
 
 function connectableNodes(snapshot: DiagramSnapshot): InnerNodeOption[] {

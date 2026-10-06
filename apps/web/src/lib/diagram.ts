@@ -443,6 +443,21 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
   );
 }
 
+export function withDescendants(nodes: Node[], ids: Iterable<string>): Set<string> {
+  const result = new Set(ids);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const node of nodes) {
+      if (node.parentId && result.has(node.parentId) && !result.has(node.id)) {
+        result.add(node.id);
+        grew = true;
+      }
+    }
+  }
+  return result;
+}
+
 export function withGroupCounts(nodes: Node[]): Node[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {

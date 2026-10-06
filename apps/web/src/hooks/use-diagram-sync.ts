@@ -37,13 +37,14 @@ import {
   normalizeFlowInfraNode,
   toFlowEdges,
   toFlowNodes,
+  withDescendants,
   withGroupCounts,
   type EdgePatch,
   type FlowEdgeData,
 } from "@/lib/diagram";
 import { resolveRealtimeUrl } from "@/lib/realtime-url";
 import { recordHistory, redoHistory, restoreHistory, undoHistory } from "@/lib/history";
-import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
+import { cloneInnerDiagrams, issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
   clientId: number;
@@ -708,6 +709,39 @@ export function useDiagramSync(opts: {
     [persistLocal, readOnly],
   );
 
+  const cloneInnerContent = useCallback(
+    (clones: Node[]) => {
+      const copies = clones.flatMap((node) => {
+        const data = node.data as DiagramNode["data"];
+        return data.kind === "infra" && data.childDiagramId
+          ? [{ nodeId: node.id, sourceDiagramId: data.childDiagramId }]
+          : [];
+      });
+      if (!copies.length) return;
+      void cloneInnerDiagrams(opts.diagramId, copies)
+        .then((links) => {
+          const nextNodes = nodesRef.current.map((node) => {
+            const link = links[node.id];
+            const data = node.data as DiagramNode["data"];
+            if (!link || data.kind !== "infra") return node;
+            return { ...node, data: { ...data, childDiagramId: link.diagramId, childCount: link.nodeCount } };
+          });
+          nodesRef.current = nextNodes;
+          setNodesState(nextNodes);
+          writeSnapshot(
+            {
+              nodes: flowNodesToDiagram(nextNodes),
+              edges: flowEdgesToDiagram(edgesRef.current),
+              meta: metaRef.current,
+            },
+            false,
+          );
+        })
+        .catch(() => undefined);
+    },
+    [opts.diagramId, writeSnapshot],
+  );
+
   const pasteGraph = useCallback(
     (
       sourceNodes: Array<{
@@ -788,25 +822,29 @@ export function useDiagramSync(opts: {
       setNodesState(nextNodes);
       setEdgesState(nextEdges);
       persistLocal(nextNodes, nextEdges);
+      cloneInnerContent(ordered);
     },
-    [persistLocal, readOnly],
+    [cloneInnerContent, persistLocal, readOnly],
   );
 
   const duplicateNodes = useCallback(
     (ids: string[]) => {
       if (readOnly || !ids.length) return;
-      const selected = new Set(ids);
+      const selected = withDescendants(nodesRef.current, ids);
       const sourceNodes = nodesRef.current.filter((node) => selected.has(node.id));
       if (!sourceNodes.length) return;
       const idMap = new Map(sourceNodes.map((node) => [node.id, crypto.randomUUID()]));
-      const clones = sourceNodes.map((node) => ({
-        ...node,
-        id: idMap.get(node.id)!,
-        selected: true,
-        parentId: node.parentId && idMap.has(node.parentId) ? idMap.get(node.parentId) : node.parentId,
-        position: { x: node.position.x + 40, y: node.position.y + 40 },
-        data: remapConnectors(structuredClone(node.data), idMap),
-      }));
+      const clones = sourceNodes.map((node) => {
+        const parentCopied = Boolean(node.parentId && idMap.has(node.parentId));
+        return {
+          ...node,
+          id: idMap.get(node.id)!,
+          selected: !parentCopied,
+          parentId: parentCopied ? idMap.get(node.parentId!) : node.parentId,
+          position: parentCopied ? { ...node.position } : { x: node.position.x + 40, y: node.position.y + 40 },
+          data: remapConnectors(structuredClone(node.data), idMap),
+        };
+      });
       const nextNodes = withGroupCounts([
         ...nodesRef.current.map((node) => ({ ...node, selected: false })),
         ...clones,
@@ -830,8 +868,9 @@ export function useDiagramSync(opts: {
       setNodesState(nextNodes);
       setEdgesState(nextEdges);
       persistLocal(nextNodes, nextEdges);
+      cloneInnerContent(clones);
     },
-    [persistLocal, readOnly],
+    [cloneInnerContent, persistLocal, readOnly],
   );
 
   const setCursor = useCallback((x: number, y: number) => {

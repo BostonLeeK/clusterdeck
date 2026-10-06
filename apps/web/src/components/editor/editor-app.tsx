@@ -69,12 +69,13 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { useIsMobile } from "@/hooks/use-media-query";
-import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
+import { attachNodeToGroup, groupSelectedNodes, ungroupNode, withDescendants } from "@/lib/diagram";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
 import { detectTrackpad, setNavigationMode, useNavigationMode } from "@/lib/navigation-mode";
 
 const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode, note: NoteNode };
 const edgeTypes = { labeled: LabeledEdge };
+const MULTI_SELECT_KEYS = ["Shift", "Meta", "Control"];
 
 type Member = {
   id: string;
@@ -429,17 +430,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const clipboardRef = useRef<{ raw: string; pastes: number } | null>(null);
 
   const copySelection = useCallback(() => {
-    const selected = new Set(sync.nodes.filter((node) => node.selected).map((node) => node.id));
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const node of sync.nodes) {
-        if (node.parentId && selected.has(node.parentId) && !selected.has(node.id)) {
-          selected.add(node.id);
-          grew = true;
-        }
-      }
-    }
+    const selected = withDescendants(
+      sync.nodes,
+      sync.nodes.filter((node) => node.selected).map((node) => node.id),
+    );
     const nodes = sync.nodes.filter((node) => selected.has(node.id));
     if (!nodes.length) return false;
     const edges = sync.edges.filter((edge) => selected.has(edge.source) && selected.has(edge.target));
@@ -864,21 +858,24 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (isPublic) return;
                 setMenu(null);
                 revealDetails();
-                if (event.shiftKey) {
-                  setNodes((current) =>
-                    current.map((item) => (item.id === node.id ? { ...item, selected: !item.selected } : item)),
-                  );
-                  setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+                if (isMultiSelectClick(event)) {
+                  const selected = !node.selected;
+                  setNodes((current) => current.map((item) => (item.id === node.id ? { ...item, selected } : item)));
                   return;
                 }
                 selectNodeOnly(node.id);
               }}
               onNodeDragStop={(_, node, nodes) => reparentDraggedNodes(nodes.length ? nodes : [node])}
               onSelectionDragStop={(_, nodes) => reparentDraggedNodes(nodes)}
-              onEdgeClick={(_, edge) => {
+              onEdgeClick={(event, edge) => {
                 if (isPublic) return;
                 setMenu(null);
                 revealDetails();
+                if (isMultiSelectClick(event)) {
+                  const selected = !edge.selected;
+                  setEdges((current) => current.map((item) => (item.id === edge.id ? { ...item, selected } : item)));
+                  return;
+                }
                 selectEdgeOnly(edge.id);
               }}
               onPaneClick={() => {
@@ -961,7 +958,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               zoomOnScroll={!trackpad}
               selectNodesOnDrag={false}
               selectionKeyCode={isPublic ? null : "Shift"}
-              multiSelectionKeyCode={isPublic ? null : "Shift"}
+              multiSelectionKeyCode={isPublic ? null : MULTI_SELECT_KEYS}
               nodesDraggable={!sync.readOnly && !isPublic && (isMobile || tool === "select")}
               nodesConnectable={!sync.readOnly && !isPublic}
               elementsSelectable={!isPublic && (isMobile || tool === "select")}
@@ -1284,6 +1281,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       </div>
     </div>
   );
+}
+
+function isMultiSelectClick(event: MouseEvent) {
+  return event.shiftKey || event.ctrlKey || event.metaKey;
 }
 
 function nodeArea(node: Node) {
