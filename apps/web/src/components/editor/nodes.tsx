@@ -474,7 +474,14 @@ export const GroupNode = memo(function GroupNode({ id, data, selected }: NodePro
         </span>
         <span className="text-[11px] text-zinc-500">Subworkflow</span>
       </div>
-      <div className="pointer-events-none mt-0.5 text-[11px] text-zinc-500">{node.subtitle}</div>
+      {node.subtitle ? (
+        <div className="pointer-events-none mt-0.5 truncate text-[11px] text-zinc-500">{node.subtitle}</div>
+      ) : null}
+      {node.description ? (
+        <div className="pointer-events-none mt-1 max-w-[420px] truncate text-[11px] text-zinc-600">
+          {node.description.replace(/[#*_`>-]/g, "").replace(/\s+/g, " ").trim()}
+        </div>
+      ) : null}
     </div>
   );
 });

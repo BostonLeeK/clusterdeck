@@ -196,16 +196,35 @@ export function NodeDetails({
     return (
       <div className="space-y-3 p-4">
         <PanelHeader title="Subworkflow" onClose={onClose} />
-        <p className="text-sm text-zinc-500">{payload.childCount ?? 0} nodes inside</p>
+        <p className="text-sm text-zinc-500">
+          {payload.childCount ?? 0} {payload.childCount === 1 ? "node" : "nodes"} inside
+        </p>
+        <Field label="Title">
+          <Input
+            value={payload.title}
+            disabled={readOnly}
+            onChange={(event) => onChange({ ...payload, title: event.target.value })}
+          />
+        </Field>
+        <Field label="Subtitle">
+          <Input
+            value={payload.subtitle ?? ""}
+            disabled={readOnly}
+            placeholder="Factory app on firmware-app-1"
+            onChange={(event) => onChange({ ...payload, subtitle: event.target.value })}
+          />
+        </Field>
+        <MarkdownField
+          label="Description"
+          mode={readOnly ? "preview" : "edit"}
+          value={payload.description ?? ""}
+          placeholder={"What this subworkflow does.\n\n- Owns **firmware** builds"}
+          onChange={(description) => onChange({ ...payload, description })}
+        />
         {!readOnly ? (
-          <>
-            <Field label="Title">
-              <Input value={payload.title} onChange={(event) => onChange({ ...payload, title: event.target.value })} />
-            </Field>
-            <Button variant="secondary" className="w-full" onClick={onUngroup}>
-              Unpack subworkflow
-            </Button>
-          </>
+          <Button variant="secondary" className="w-full" onClick={onUngroup}>
+            Unpack subworkflow
+          </Button>
         ) : null}
         <ConnectorsBlock
           options={groupChildren}

@@ -1,13 +1,20 @@
 "use client";
 
 import type { Edge } from "@xyflow/react";
-import { GitCommitHorizontal, Minus, Plus, Spline, X } from "lucide-react";
-import type { DiagramFlow, EdgeLineShape } from "@dataflow/shared";
+import { ArrowLeft, ArrowLeftRight, ArrowRight, GitCommitHorizontal, Minus, Plus, Spline, X } from "lucide-react";
+import type { DiagramFlow, EdgeDirection } from "@dataflow/shared";
 import { EDGE_LINE_SHAPES } from "@dataflow/shared";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SegmentedControl, type SegmentOption } from "@/components/ui/segmented-control";
+import { flowEdgeData, type EdgePatch } from "@/lib/diagram";
 import { cn } from "@/lib/utils";
+
+const DIRECTION_OPTIONS: SegmentOption<EdgeDirection>[] = [
+  { value: "forward", label: "One way", icon: <ArrowRight className="size-3.5" />, title: "Source to target" },
+  { value: "backward", label: "Reverse", icon: <ArrowLeft className="size-3.5" />, title: "Target to source" },
+  { value: "both", label: "Both", icon: <ArrowLeftRight className="size-3.5" />, title: "Both directions" },
+];
 
 const LINE_SHAPE_OPTIONS = EDGE_LINE_SHAPES.map((shape) => ({
   value: shape,
@@ -37,7 +44,7 @@ export function EdgeDetails({
   sourceLabel?: string;
   targetLabel?: string;
   flows: DiagramFlow[];
-  onChange: (patch: { label?: string; animated?: boolean; lineShape?: EdgeLineShape }) => void;
+  onChange: (patch: EdgePatch) => void;
   onToggleFlow: (flowId: string, edgeId: string) => void;
   onCreateFlow: (edgeId: string) => void;
   onClose?: () => void;
@@ -52,33 +59,61 @@ export function EdgeDetails({
     );
   }
 
-  const data = (edge.data as { animated?: boolean; lineShape?: EdgeLineShape } | undefined) ?? {};
-  const animated = Boolean(data.animated ?? edge.animated);
-  const lineShape = data.lineShape ?? "bezier";
+  const { animated, lineShape, direction, reverseLabel } = flowEdgeData(edge);
   const label = typeof edge.label === "string" ? edge.label : "";
   const containing = flows.filter((flow) => flow.edgeIds.includes(edge.id));
   const from = sourceLabel || "Source";
   const to = targetLabel || "Target";
+  const arrow = direction === "both" ? "⇄" : direction === "backward" ? "←" : "→";
 
   return (
     <div className="flex h-full flex-col overflow-auto p-4">
       <Header title="Edge details" onClose={onClose} />
       <div className="mb-4 rounded-xl border border-[#2a2a2e] bg-[#121214] p-3 text-sm">
         <div className="text-xs text-zinc-500">Connection</div>
-        <div className="mt-1 truncate text-zinc-200" title={`${from} → ${to}`}>
-          {from} <span className="text-zinc-500">→</span> {to}
+        <div className="mt-1 truncate text-zinc-200" title={`${from} ${arrow} ${to}`}>
+          {from} <span className="text-zinc-500">{arrow}</span> {to}
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="edge-label">Label</Label>
+        <Label>Direction</Label>
+        <SegmentedControl
+          value={direction}
+          options={DIRECTION_OPTIONS}
+          disabled={readOnly}
+          onChange={(next) => onChange({ direction: next })}
+        />
+      </div>
+      <div className="mt-4 space-y-1.5">
+        <Label htmlFor="edge-label">
+          {direction === "both" ? (
+            <LabelTitle from={from} to={to} />
+          ) : (
+            "Label"
+          )}
+        </Label>
         <Input
           id="edge-label"
           disabled={readOnly}
           value={label}
-          placeholder="gRPC, SQL, events…"
+          placeholder={direction === "both" ? "POST /metrics" : "gRPC, SQL, events…"}
           onChange={(event) => onChange({ label: event.target.value })}
         />
       </div>
+      {direction === "both" ? (
+        <div className="mt-3 space-y-1.5">
+          <Label htmlFor="edge-reverse-label">
+            <LabelTitle from={to} to={from} />
+          </Label>
+          <Input
+            id="edge-reverse-label"
+            disabled={readOnly}
+            value={reverseLabel ?? ""}
+            placeholder="GET /files"
+            onChange={(event) => onChange({ reverseLabel: event.target.value })}
+          />
+        </div>
+      ) : null}
       <div className="mt-4 space-y-1.5">
         <Label>Line shape</Label>
         <SegmentedControl
@@ -153,6 +188,16 @@ export function EdgeDetails({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function LabelTitle({ from, to }: { from: string; to: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <span className="truncate">{from}</span>
+      <span className="shrink-0 text-zinc-500">→</span>
+      <span className="truncate">{to}</span>
+    </span>
   );
 }
 

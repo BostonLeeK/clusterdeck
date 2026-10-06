@@ -198,6 +198,14 @@ summary {
   opacity: 0.85;
 }
 
+.edge-flow-dash-reverse {
+  animation-direction: reverse;
+}
+
+.edge-flow-dash-still {
+  animation: none;
+}
+
 .edge-flow-dot {
   filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.7));
 }

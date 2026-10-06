@@ -45,7 +45,7 @@ interface ExcalidrawElement {
   lastCommittedPoint?: null;
   startBinding?: { elementId: string; fixedPoint: [number, number]; mode: "orbit" } | null;
   endBinding?: { elementId: string; fixedPoint: [number, number]; mode: "orbit" } | null;
-  startArrowhead?: null;
+  startArrowhead?: "arrow" | null;
   endArrowhead?: "arrow" | null;
   elbowed?: false;
 }
@@ -185,8 +185,8 @@ function arrowElement(edge: ExportEdge, nodes: Map<string, ExportNode>, order: n
     lastCommittedPoint: null,
     startBinding: { elementId: source.id, fixedPoint: [1, 0.5], mode: "orbit" },
     endBinding: { elementId: target.id, fixedPoint: [0, 0.5], mode: "orbit" },
-    startArrowhead: null,
-    endArrowhead: "arrow",
+    startArrowhead: edge.direction === "forward" ? null : "arrow",
+    endArrowhead: edge.direction === "backward" ? null : "arrow",
     elbowed: false,
   });
 }

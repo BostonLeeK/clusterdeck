@@ -1,5 +1,5 @@
-import type { DiagramSnapshot, EdgeLineShape } from "./node-types";
-import type { ExportNode, ExportShape } from "./export-layout";
+import type { DiagramSnapshot } from "./node-types";
+import type { ExportEdge, ExportNode, ExportShape } from "./export-layout";
 import { layoutDiagram } from "./export-layout";
 
 function xmlEscape(value: string): string {
@@ -69,11 +69,13 @@ function nodeStyle(node: ExportNode): string {
   return parts.join(";");
 }
 
-function edgeStyle(lineShape: EdgeLineShape, dashed: boolean): string {
+function edgeStyle(edge: ExportEdge): string {
   const parts = [
     "html=1",
-    "endArrow=block",
+    edge.direction === "backward" ? "endArrow=none" : "endArrow=block",
     "endFill=1",
+    edge.direction === "forward" ? "startArrow=none" : "startArrow=block",
+    "startFill=1",
     "strokeColor=#71717a",
     "fontColor=#3f3f46",
     "fontSize=11",
@@ -86,9 +88,9 @@ function edgeStyle(lineShape: EdgeLineShape, dashed: boolean): string {
     "entryDx=0",
     "entryDy=0",
   ];
-  if (lineShape === "step") parts.push("edgeStyle=orthogonalEdgeStyle", "rounded=0");
-  else if (lineShape === "bezier") parts.push("curved=1");
-  if (dashed) parts.push("dashed=1");
+  if (edge.lineShape === "step") parts.push("edgeStyle=orthogonalEdgeStyle", "rounded=0");
+  else if (edge.lineShape === "bezier") parts.push("curved=1");
+  if (edge.dashed) parts.push("dashed=1");
   return parts.join(";");
 }
 
@@ -109,7 +111,7 @@ export function toDrawio(snapshot: DiagramSnapshot): string {
     ...nodes.map(nodeCell),
     ...edges.map(
       (edge) =>
-        `<mxCell id="${xmlEscape(cellId(edge.id))}" value="${xmlEscape(edge.label ?? "")}" style="${edgeStyle(edge.lineShape, edge.dashed)}" edge="1" parent="1" source="${xmlEscape(cellId(edge.sourceId))}" target="${xmlEscape(cellId(edge.targetId))}"><mxGeometry relative="1" as="geometry"/></mxCell>`,
+        `<mxCell id="${xmlEscape(cellId(edge.id))}" value="${xmlEscape(edge.label ?? "")}" style="${edgeStyle(edge)}" edge="1" parent="1" source="${xmlEscape(cellId(edge.sourceId))}" target="${xmlEscape(cellId(edge.targetId))}"><mxGeometry relative="1" as="geometry"/></mxCell>`,
     ),
   ];
   return [

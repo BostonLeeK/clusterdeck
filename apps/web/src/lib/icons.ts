@@ -1,5 +1,6 @@
 import {
   Activity,
+  AppWindow,
   Archive,
   Bell,
   Box,
@@ -30,6 +31,7 @@ import {
 import type { InfraNodeTypeId } from "@dataflow/shared";
 
 export const NODE_ICONS: Record<InfraNodeTypeId, LucideIcon> = {
+  app: AppWindow,
   service: Shield,
   lambda: Zap,
   container: Box,

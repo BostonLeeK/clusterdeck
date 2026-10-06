@@ -1,4 +1,12 @@
-import type { DiagramEdge, DiagramNode, DiagramNodeKind, DiagramSnapshot, EdgeLineShape, NodeShape } from "./node-types";
+import type {
+  DiagramEdge,
+  DiagramNode,
+  DiagramNodeKind,
+  DiagramSnapshot,
+  EdgeDirection,
+  EdgeLineShape,
+  NodeShape,
+} from "./node-types";
 import { nodeTypeById, resolveAccentColor, resolveNodeScope, resolveNodeShape, techById } from "./node-types";
 
 export type ExportShape = NodeShape | "group" | "note" | "port";
@@ -29,6 +37,7 @@ export interface ExportEdge {
   targetId: string;
   label?: string;
   lineShape: EdgeLineShape;
+  direction: EdgeDirection;
   dashed: boolean;
 }
 
@@ -182,13 +191,22 @@ export function layoutDiagram(snapshot: DiagramSnapshot): { nodes: ExportNode[];
   return { nodes, edges };
 }
 
+function edgeLabel(edge: DiagramEdge) {
+  const forward = edge.label?.trim();
+  const reverse = edge.direction === "both" ? edge.reverseLabel?.trim() : undefined;
+  if (forward && reverse) return `→ ${forward} / ← ${reverse}`;
+  if (reverse) return `← ${reverse}`;
+  return forward || undefined;
+}
+
 function toExportEdge(edge: DiagramEdge): ExportEdge {
   return {
     id: edge.id,
     sourceId: edge.source,
     targetId: edge.target,
-    label: edge.label?.trim() || undefined,
+    label: edgeLabel(edge),
     lineShape: edge.lineShape ?? "bezier",
+    direction: edge.direction ?? "forward",
     dashed: Boolean(edge.animated),
   };
 }

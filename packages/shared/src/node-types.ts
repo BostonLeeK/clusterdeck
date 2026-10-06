@@ -3,6 +3,7 @@ export const NODE_CATEGORIES = ["compute", "data", "model", "messaging", "networ
 export type NodeCategory = (typeof NODE_CATEGORIES)[number];
 
 export const NODE_TYPE_IDS = [
+  "app",
   "service",
   "lambda",
   "container",
@@ -46,6 +47,9 @@ export type NodeLifecycle = (typeof NODE_LIFECYCLES)[number];
 
 export const EDGE_LINE_SHAPES = ["bezier", "straight", "step"] as const;
 export type EdgeLineShape = (typeof EDGE_LINE_SHAPES)[number];
+
+export const EDGE_DIRECTIONS = ["forward", "backward", "both"] as const;
+export type EdgeDirection = (typeof EDGE_DIRECTIONS)[number];
 
 export type DiagramNodeKind = "infra" | "group" | "port" | "note";
 
@@ -134,6 +138,7 @@ export interface GroupNodeData {
   kind: "group";
   title: string;
   subtitle?: string;
+  description?: string;
   tags: string[];
   childCount?: number;
   connectors?: NodeConnector[];
@@ -178,8 +183,10 @@ export interface DiagramEdge {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   label?: string;
+  reverseLabel?: string;
   animated?: boolean;
   lineShape?: EdgeLineShape;
+  direction?: EdgeDirection;
 }
 
 export interface TagDef {
@@ -218,12 +225,13 @@ export interface NodeTypeDefinition {
 }
 
 export const NODE_LIBRARY: NodeTypeDefinition[] = [
+  { id: "app", label: "App", category: "compute", subtitle: "Application", icon: "app-window", color: "#a78bfa", defaultShape: "rounded", defaultScope: "internal" },
   { id: "service", label: "Service", category: "compute", subtitle: "Service", icon: "shield", color: "#818cf8", defaultShape: "rounded", defaultScope: "internal" },
   { id: "lambda", label: "Lambda", category: "compute", subtitle: "Function", icon: "zap", color: "#fbbf24", defaultShape: "rounded", defaultScope: "internal" },
   { id: "container", label: "Container", category: "compute", subtitle: "Container", icon: "box", color: "#34d399", defaultShape: "rounded", defaultScope: "internal" },
   { id: "worker", label: "Worker", category: "compute", subtitle: "Worker", icon: "cog", color: "#2dd4bf", defaultShape: "rounded", defaultScope: "internal" },
   { id: "cron", label: "Cron", category: "compute", subtitle: "Schedule", icon: "clock", color: "#eab308", defaultShape: "rounded", defaultScope: "internal" },
-  { id: "postgres", label: "PostgreSQL", category: "data", subtitle: "Database", icon: "database", color: "#60a5fa", defaultShape: "rounded", defaultScope: "internal" },
+  { id: "postgres", label: "Database", category: "data", subtitle: "Database", icon: "database", color: "#60a5fa", defaultShape: "rounded", defaultScope: "internal" },
   { id: "redis", label: "Redis", category: "data", subtitle: "Cache", icon: "layers", color: "#f87171", defaultShape: "rounded", defaultScope: "internal" },
   { id: "s3", label: "S3", category: "data", subtitle: "Object storage", icon: "hard-drive", color: "#fb923c", defaultShape: "rounded", defaultScope: "internal" },
   { id: "storage", label: "Storage", category: "data", subtitle: "Storage", icon: "archive", color: "#d6d3d1", defaultShape: "rounded", defaultScope: "internal" },
@@ -304,6 +312,7 @@ export const TECH_CATALOG: TechDefinition[] = [
   { id: "php", label: "PHP", color: "#777bb4", icon: "file-code" },
   { id: "elixir", label: "Elixir", color: "#a15ee5", icon: "file-code" },
   { id: "swift", label: "Swift", color: "#f05138", icon: "file-code" },
+  { id: "cpp", label: "C++", color: "#659ad2", icon: "file-code" },
   { id: "react", label: "React", color: "#61dafb", icon: "puzzle" },
   { id: "nextjs", label: "Next.js", color: "#e2e8f0", icon: "puzzle" },
   { id: "vue", label: "Vue", color: "#42b883", icon: "puzzle" },
@@ -314,6 +323,7 @@ export const TECH_CATALOG: TechDefinition[] = [
   { id: "django", label: "Django", color: "#44b78b", icon: "box" },
   { id: "fastapi", label: "FastAPI", color: "#009688", icon: "zap" },
   { id: "dotnet", label: ".NET", color: "#512bd4", icon: "box" },
+  { id: "qt", label: "Qt", color: "#41cd52", icon: "puzzle" },
   { id: "postgres", label: "PostgreSQL", color: "#336791", icon: "database" },
   { id: "mysql", label: "MySQL", color: "#4479a1", icon: "database" },
   { id: "sqlite", label: "SQLite", color: "#0f80cc", icon: "database" },

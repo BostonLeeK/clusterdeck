@@ -6,6 +6,7 @@ import {
   type DiagramEdge,
   type DiagramNode,
   type DiagramNodeKind,
+  type EdgeDirection,
   type EdgeLineShape,
   type InfraNodeTypeId,
   type NodeLifecycle,
@@ -48,8 +49,10 @@ export interface EdgeInput {
   source?: string;
   target?: string;
   label?: string;
+  reverseLabel?: string;
   animated?: boolean;
   lineShape?: EdgeLineShape;
+  direction?: EdgeDirection;
 }
 
 function infraTypeId(value: string | undefined): InfraNodeTypeId {
@@ -105,6 +108,7 @@ function createNode(id: string, input: NodeInput): DiagramNode {
         kind: "group",
         title: input.title?.trim() || "Group",
         subtitle: input.subtitle,
+        description: input.description,
         tags: input.tags ?? [],
       },
     };
@@ -162,6 +166,7 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
       ...existing.data,
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.subtitle !== undefined ? { subtitle: input.subtitle } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.tags !== undefined ? { tags: input.tags } : {}),
     };
     return next;
@@ -195,6 +200,8 @@ function upsertEdge(existing: DiagramEdge | undefined, input: EdgeInput, id: str
     label: input.label !== undefined ? input.label : existing?.label,
     animated: input.animated !== undefined ? input.animated : existing?.animated,
     lineShape: input.lineShape ?? existing?.lineShape ?? "bezier",
+    direction: input.direction ?? existing?.direction ?? "forward",
+    reverseLabel: input.reverseLabel !== undefined ? input.reverseLabel : existing?.reverseLabel,
     sourceHandle: existing?.sourceHandle,
     targetHandle: existing?.targetHandle,
   };

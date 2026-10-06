@@ -1,5 +1,12 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { DiagramEdge, DiagramNode, DiagramSnapshot, InfraNodeData } from "@dataflow/shared";
+import type {
+  DiagramEdge,
+  DiagramNode,
+  DiagramSnapshot,
+  EdgeDirection,
+  EdgeLineShape,
+  InfraNodeData,
+} from "@dataflow/shared";
 import { normalizeNodeProperties, parseConnectorHandle } from "@dataflow/shared";
 
 export function mergeInheritedPorts(
@@ -135,6 +142,25 @@ export function toFlowNodes(nodes: DiagramNode[]): Node[] {
   return sortParentsFirst(mapped);
 }
 
+export type FlowEdgeData = {
+  animated: boolean;
+  lineShape: EdgeLineShape;
+  direction: EdgeDirection;
+  reverseLabel?: string;
+};
+
+export type EdgePatch = Partial<FlowEdgeData> & { label?: string };
+
+export function flowEdgeData(edge: Pick<Edge, "data" | "animated">): FlowEdgeData {
+  const data = (typeof edge.data === "object" && edge.data ? edge.data : {}) as Partial<FlowEdgeData>;
+  return {
+    animated: Boolean(data.animated ?? edge.animated),
+    lineShape: data.lineShape ?? "bezier",
+    direction: data.direction ?? "forward",
+    reverseLabel: data.reverseLabel,
+  };
+}
+
 export function toFlowEdges(edges: DiagramEdge[]): Edge[] {
   return edges.map((edge) => ({
     id: edge.id,
@@ -148,7 +174,9 @@ export function toFlowEdges(edges: DiagramEdge[]): Edge[] {
     data: {
       animated: Boolean(edge.animated),
       lineShape: edge.lineShape ?? "bezier",
-    },
+      direction: edge.direction ?? "forward",
+      reverseLabel: edge.reverseLabel,
+    } satisfies FlowEdgeData,
   }));
 }
 

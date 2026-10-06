@@ -6,7 +6,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { and, desc, eq, exists, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db, diagrams, projectMembers, projects, users, workspaceMembers } from "@dataflow/db";
-import { diagramAgentInstructions, snapshotFromDoc } from "@dataflow/shared";
+import { EDGE_DIRECTIONS, EDGE_LINE_SHAPES, diagramAgentInstructions, snapshotFromDoc } from "@dataflow/shared";
 import { canEditProject, projectRole } from "./access";
 import { applyDiagramEdits, type EdgeInput, type NodeInput } from "./mcp-edit";
 
@@ -41,8 +41,10 @@ const edgeInput = z.object({
   source: z.string().optional(),
   target: z.string().optional(),
   label: z.string().optional(),
+  reverseLabel: z.string().optional(),
   animated: z.boolean().optional(),
-  lineShape: z.enum(["bezier", "straight", "step"]).optional(),
+  lineShape: z.enum(EDGE_LINE_SHAPES).optional(),
+  direction: z.enum(EDGE_DIRECTIONS).optional(),
 });
 
 async function userIdFromHeader(header: string | undefined) {

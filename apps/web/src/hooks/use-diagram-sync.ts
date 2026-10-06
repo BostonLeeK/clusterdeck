@@ -25,12 +25,19 @@ import {
   type DiagramMeta,
   type DiagramNode,
   type DiagramSnapshot,
-  type EdgeLineShape,
   type MemberRole,
   type NodeConnector,
   type TagDef,
 } from "@dataflow/shared";
-import { fromFlowNode, normalizeFlowInfraNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
+import {
+  flowEdgeData,
+  fromFlowNode,
+  normalizeFlowInfraNode,
+  toFlowEdges,
+  toFlowNodes,
+  type EdgePatch,
+  type FlowEdgeData,
+} from "@/lib/diagram";
 import { resolveRealtimeUrl } from "@/lib/realtime-url";
 import { recordHistory, redoHistory, restoreHistory, undoHistory } from "@/lib/history";
 import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
@@ -83,7 +90,7 @@ function remapHandle(handle: string | null | undefined, idMap: Map<string, strin
 
 function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
   return edges.map((edge) => {
-    const data = edge.data as { animated?: boolean; lineShape?: EdgeLineShape } | undefined;
+    const data = flowEdgeData(edge);
     return {
       id: edge.id,
       source: edge.source,
@@ -91,8 +98,10 @@ function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,
       label: typeof edge.label === "string" ? edge.label : undefined,
-      animated: Boolean(data?.animated ?? edge.animated),
-      lineShape: data?.lineShape ?? "bezier",
+      animated: data.animated,
+      lineShape: data.lineShape,
+      direction: data.direction,
+      reverseLabel: data.direction === "both" ? data.reverseLabel || undefined : undefined,
     };
   });
 }
@@ -420,7 +429,7 @@ export function useDiagramSync(opts: {
         targetHandle: connection.targetHandle,
         type: "labeled",
         animated: false,
-        data: { animated: false, lineShape: "bezier" as EdgeLineShape },
+        data: { animated: false, lineShape: "bezier", direction: "forward" } satisfies FlowEdgeData,
       };
       setEdges((current) => {
         const next = [...current, edge];
@@ -456,23 +465,18 @@ export function useDiagramSync(opts: {
   );
 
   const updateEdge = useCallback(
-    (id: string, patch: { label?: string; animated?: boolean; lineShape?: EdgeLineShape }) => {
+    (id: string, patch: EdgePatch) => {
       if (readOnly) return;
       setEdges((current) => {
         const next = current.map((edge) => {
           if (edge.id !== id) return edge;
-          const data = (typeof edge.data === "object" && edge.data ? edge.data : {}) as {
-            animated?: boolean;
-            lineShape?: EdgeLineShape;
-          };
-          const animated =
-            patch.animated !== undefined ? patch.animated : Boolean(data.animated ?? edge.animated);
-          const lineShape = patch.lineShape !== undefined ? patch.lineShape : (data.lineShape ?? "bezier");
+          const { label, ...dataPatch } = patch;
+          const data: FlowEdgeData = { ...flowEdgeData(edge), ...dataPatch };
           return {
             ...edge,
-            label: patch.label !== undefined ? patch.label : edge.label,
-            animated,
-            data: { ...data, animated, lineShape },
+            label: label !== undefined ? label : edge.label,
+            animated: data.animated,
+            data,
           };
         });
         persistLocal(nodesRef.current, next);
