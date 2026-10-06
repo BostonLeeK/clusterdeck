@@ -4,7 +4,7 @@ import { toPng, toSvg } from "html-to-image";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
 import { importDiagramJson } from "@/actions/diagrams";
-import type { DiagramSnapshot } from "@dataflow/shared";
+import { toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
 
 export function ExportMenu({
   diagramId,
@@ -28,14 +28,26 @@ export function ExportMenu({
     link.click();
   }
 
-  function exportJson() {
-    const blob = new Blob([JSON.stringify(getSnapshot(), null, 2)], { type: "application/json" });
+  function downloadText(filename: string, contents: string, type: string) {
+    const blob = new Blob([contents], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "diagram.json";
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportJson() {
+    downloadText("diagram.json", JSON.stringify(getSnapshot(), null, 2), "application/json");
+  }
+
+  function exportDrawio() {
+    downloadText("diagram.drawio", toDrawio(getSnapshot()), "application/xml");
+  }
+
+  function exportExcalidraw() {
+    downloadText("diagram.excalidraw", toExcalidraw(getSnapshot()), "application/json");
   }
 
   function importJson() {
@@ -62,6 +74,8 @@ export function ExportMenu({
       <MenuContent>
         <MenuItem onSelect={() => void exportImage("png")}>Export PNG</MenuItem>
         <MenuItem onSelect={() => void exportImage("svg")}>Export SVG</MenuItem>
+        <MenuItem onSelect={exportDrawio}>Export draw.io</MenuItem>
+        <MenuItem onSelect={exportExcalidraw}>Export Excalidraw</MenuItem>
         <MenuItem onSelect={exportJson}>Export JSON</MenuItem>
         <MenuItem onSelect={importJson}>Import JSON</MenuItem>
       </MenuContent>
