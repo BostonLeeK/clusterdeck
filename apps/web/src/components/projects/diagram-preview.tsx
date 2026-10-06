@@ -4,10 +4,11 @@ import { cn } from "@/lib/utils";
 
 type Box = { node: DiagramNode; x: number; y: number; width: number; height: number };
 
-const NOMINAL_WIDTH = 560;
-const NOMINAL_HEIGHT = 140;
-const PADDING_RATIO = 0.06;
-const MIN_LABEL_PX = 9;
+const TARGET_ASPECT = 4;
+const NOMINAL_HEIGHT = 132;
+const PADDING_RATIO = 0.08;
+const LABEL_MIN_HEIGHT_PX = 22;
+const LABEL_FONT_PX = 9;
 const FONT = "Inter, system-ui, sans-serif";
 
 const DEFAULT_SIZE: Record<DiagramNode["type"], { width: number; height: number }> = {
@@ -19,17 +20,12 @@ const DEFAULT_SIZE: Record<DiagramNode["type"], { width: number; height: number 
 
 function accentOf(node: DiagramNode) {
   if (node.data.kind === "infra") return node.data.accentColor ?? nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
-  if (node.data.kind === "group") return "#818cf8";
-  return "#facc15";
+  if (node.data.kind === "note") return "#facc15";
+  return "#a1a1aa";
 }
 
 function titleOf(node: DiagramNode) {
   return "title" in node.data ? (node.data.title ?? "").trim() : "";
-}
-
-function truncate(text: string, maxChars: number) {
-  if (maxChars < 3) return "";
-  return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
 }
 
 function layoutBoxes(snapshot: DiagramSnapshot): Box[] {
@@ -48,13 +44,25 @@ function layoutBoxes(snapshot: DiagramSnapshot): Box[] {
     .filter((node) => node.type !== "port")
     .map((node) => {
       const size = DEFAULT_SIZE[node.type] ?? DEFAULT_SIZE.infra;
-      return {
-        node,
-        ...absolute(node),
-        width: node.width ?? size.width,
-        height: node.height ?? size.height,
-      };
+      return { node, ...absolute(node), width: node.width ?? size.width, height: node.height ?? size.height };
     });
+}
+
+function frame(boxes: Box[]) {
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  const pad = Math.max(maxX - minX, maxY - minY) * PADDING_RATIO;
+  const spanX = maxX - minX + pad * 2;
+  const spanY = maxY - minY + pad * 2;
+  const fitWidth = Math.max(spanX, spanY * TARGET_ASPECT);
+  const coverWidth = Math.min(spanX, spanY * TARGET_ASPECT);
+  const width = Math.sqrt(fitWidth * coverWidth);
+  const height = width / TARGET_ASPECT;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  return { x: centerX - width / 2, y: centerY - height / 2, width, height, scale: NOMINAL_HEIGHT / height };
 }
 
 function edgePath(source: Box, target: Box) {
@@ -87,29 +95,28 @@ export function DiagramPreview({
   const boxes = layoutBoxes(snapshot);
   if (!boxes.length) return <div className={cn("rounded-xl bg-surface", className)} />;
 
-  const minX = Math.min(...boxes.map((box) => box.x));
-  const minY = Math.min(...boxes.map((box) => box.y));
-  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
-  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
-  const spanX = Math.max(1, maxX - minX);
-  const spanY = Math.max(1, maxY - minY);
-  const pad = Math.max(spanX, spanY) * PADDING_RATIO;
-  const viewWidth = spanX + pad * 2;
-  const viewHeight = spanY + pad * 2;
-  const scale = Math.min(NOMINAL_WIDTH / viewWidth, NOMINAL_HEIGHT / viewHeight);
-  const px = (value: number) => value / scale;
-
+  const view = frame(boxes);
+  const px = (value: number) => value / view.scale;
+  const radius = (box: Box, max: number) => Math.min(px(max), box.height * 0.3);
   const byId = new Map(boxes.map((box) => [box.node.id, box]));
   const groups = boxes.filter((box) => box.node.type === "group");
   const items = boxes.filter((box) => box.node.type !== "group");
 
-  const label = (box: Box, fontPx: number, inset: number, offsetY: number, color: string) => {
-    if (box.height * scale < MIN_LABEL_PX * 1.4) return null;
-    const maxChars = Math.floor((box.width * scale - inset * 2) / (fontPx * 0.56));
-    const text = truncate(titleOf(box.node), maxChars);
-    if (!text) return null;
+  const label = (box: Box) => {
+    if (box.height * view.scale < LABEL_MIN_HEIGHT_PX) return null;
+    const maxChars = Math.floor((box.width * view.scale - 16) / (LABEL_FONT_PX * 0.6));
+    const title = titleOf(box.node);
+    if (maxChars < 4 || !title) return null;
+    const text = title.length > maxChars ? `${title.slice(0, maxChars - 1)}…` : title;
     return (
-      <text x={box.x + px(inset)} y={box.y + px(offsetY)} fill={color} fontSize={px(fontPx)} fontFamily={FONT}>
+      <text
+        x={box.x + px(8)}
+        y={box.y + box.height / 2}
+        dominantBaseline="central"
+        fill="#e4e4e7"
+        fontSize={px(LABEL_FONT_PX)}
+        fontFamily={FONT}
+      >
         {text}
       </text>
     );
@@ -117,26 +124,25 @@ export function DiagramPreview({
 
   return (
     <svg
-      viewBox={`${minX - pad} ${minY - pad} ${viewWidth} ${viewHeight}`}
-      preserveAspectRatio="xMidYMid meet"
+      viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+      preserveAspectRatio="xMidYMid slice"
       className={cn("block w-full overflow-hidden", className)}
       aria-hidden
     >
       {groups.map((box) => (
-        <g key={box.node.id}>
-          <rect
-            x={box.x}
-            y={box.y}
-            width={box.width}
-            height={box.height}
-            rx={px(6)}
-            fill="rgba(129,140,248,0.04)"
-            stroke="rgba(161,161,170,0.28)"
-            strokeDasharray="4 3"
-            vectorEffect="non-scaling-stroke"
-          />
-          {label(box, 8, 6, 12, "#a1a1aa")}
-        </g>
+        <rect
+          key={box.node.id}
+          x={box.x}
+          y={box.y}
+          width={box.width}
+          height={box.height}
+          rx={radius(box, 8)}
+          fill="#ffffff"
+          fillOpacity={0.025}
+          stroke="#ffffff"
+          strokeOpacity={0.08}
+          vectorEffect="non-scaling-stroke"
+        />
       ))}
       {snapshot.edges.map((edge) => {
         const source = byId.get(edge.source);
@@ -147,8 +153,8 @@ export function DiagramPreview({
             key={edge.id}
             d={edgePath(source, target)}
             fill="none"
-            stroke="#52525b"
-            strokeOpacity={0.8}
+            stroke="#71717a"
+            strokeOpacity={0.35}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -156,7 +162,6 @@ export function DiagramPreview({
       })}
       {items.map((box) => {
         const accent = accentOf(box.node);
-        const note = box.node.type === "note";
         return (
           <g key={box.node.id}>
             <rect
@@ -164,16 +169,14 @@ export function DiagramPreview({
               y={box.y}
               width={box.width}
               height={box.height}
-              rx={px(4)}
-              fill={note ? "rgba(250,204,21,0.08)" : "#18181b"}
-              stroke={note ? "rgba(250,204,21,0.3)" : accent}
-              strokeOpacity={note ? 1 : 0.55}
+              rx={radius(box, 5)}
+              fill={accent}
+              fillOpacity={box.node.type === "note" ? 0.08 : 0.16}
+              stroke={accent}
+              strokeOpacity={0.35}
               vectorEffect="non-scaling-stroke"
             />
-            {!note ? (
-              <rect x={box.x} y={box.y} width={px(2)} height={box.height} rx={px(1)} fill={accent} />
-            ) : null}
-            {label(box, MIN_LABEL_PX, 6, Math.min(14, (box.height * scale) / 2 + 3), "#e4e4e7")}
+            {label(box)}
           </g>
         );
       })}

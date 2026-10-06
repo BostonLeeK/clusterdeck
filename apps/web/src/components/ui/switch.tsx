@@ -20,7 +20,7 @@ export function Switch({
       disabled={disabled}
       onCheckedChange={onCheckedChange}
       className={cn(
-        "relative h-6 w-10 rounded-full bg-zinc-700 data-[state=checked]:bg-primary disabled:opacity-50",
+        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full bg-zinc-700 transition-colors data-[state=checked]:bg-primary disabled:opacity-50",
         className,
       )}
     >

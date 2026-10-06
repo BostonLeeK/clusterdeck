@@ -214,7 +214,7 @@ export function ShareDialog({
         </div>
         <div className="rounded-xl border border-[#2a2a2e] p-3">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <div className="text-sm">Anyone with the link can view</div>
               <div className="text-xs text-zinc-500">
                 Public link access is separate from invites. Removed people can still open this link until you turn it off.
