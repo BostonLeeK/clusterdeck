@@ -27,18 +27,23 @@ function withAlpha(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export function DiagramPreview({ snapshot }: { snapshot: DiagramSnapshot }) {
+export function DiagramPreview({
+  snapshot,
+  className = "h-[132px]",
+}: {
+  snapshot: DiagramSnapshot;
+  className?: string;
+}) {
   const nodes = snapshot.nodes.filter((node) => node.type !== "port").slice(0, 10);
-  if (nodes.length === 0) {
-    return <div className="h-[132px] rounded-xl bg-surface" />;
-  }
+  const empty = <div className={`rounded-xl bg-surface ${className}`} />;
+  if (nodes.length === 0) return empty;
 
   const ids = new Set(nodes.map((node) => node.id));
   const edges = snapshot.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
   const incoming = new Set(edges.map((edge) => edge.target));
   const roots = nodes.filter((node) => !incoming.has(node.id));
   const start = roots[0] ?? nodes[0];
-  if (!start) return <div className="h-[132px] rounded-xl bg-surface" />;
+  if (!start) return empty;
 
   const columns: DiagramNode[][] = [];
   const seen = new Set<string>();
@@ -81,7 +86,7 @@ export function DiagramPreview({ snapshot }: { snapshot: DiagramSnapshot }) {
   });
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[132px] w-full overflow-visible">
+    <svg viewBox={`0 0 ${width} ${height}`} className={`w-full overflow-visible ${className}`}>
       {edges.map((edge) => {
         const a = positions.get(edge.source);
         const b = positions.get(edge.target);

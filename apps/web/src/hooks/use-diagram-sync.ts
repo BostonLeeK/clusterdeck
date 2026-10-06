@@ -17,9 +17,6 @@ import {
   connectorHandleId,
   emptyMeta,
   getChatArray,
-  getEdgeMap,
-  getMetaMap,
-  getNodeMap,
   parseConnectorHandle,
   snapshotFromDoc,
   type ChatMessage,
@@ -35,6 +32,7 @@ import {
 } from "@dataflow/shared";
 import { fromFlowNode, normalizeFlowInfraNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
 import { resolveRealtimeUrl } from "@/lib/realtime-url";
+import { recordHistory, redoHistory, restoreHistory, undoHistory } from "@/lib/history";
 import { issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
@@ -107,7 +105,6 @@ export function useDiagramSync(opts: {
   shareToken?: string;
 }) {
   const docRef = useRef<Y.Doc>(new Y.Doc());
-  const undoRef = useRef<Y.UndoManager | null>(null);
   const nodesRef = useRef<Node[]>(toFlowNodes(opts.initial.nodes));
   const edgesRef = useRef<Edge[]>(toFlowEdges(opts.initial.edges));
   const metaRef = useRef<DiagramMeta>(opts.initial.meta ?? emptyMeta());
@@ -182,15 +179,11 @@ export function useDiagramSync(opts: {
     setMetaState(nextMeta);
   }, []);
 
-  const persistLocal = useCallback(
-    (nextNodes: Node[], nextEdges: Edge[], nextMeta: DiagramMeta = metaRef.current) => {
+  const writeSnapshot = useCallback(
+    (snapshot: DiagramSnapshot, record: boolean) => {
       dirtyRef.current = true;
       const doc = docRef.current;
-      const snapshot: DiagramSnapshot = {
-        nodes: flowNodesToDiagram(nextNodes),
-        edges: flowEdgesToDiagram(nextEdges),
-        meta: nextMeta,
-      };
+      if (record) recordHistory(opts.diagramId, snapshotFromDoc(doc), snapshot);
       applySnapshot(doc, snapshot, LOCAL_ORIGIN);
       setSaved(false);
       if (!providerRef.current) {
@@ -203,16 +196,42 @@ export function useDiagramSync(opts: {
     [opts.diagramId],
   );
 
+  const persistLocal = useCallback(
+    (nextNodes: Node[], nextEdges: Edge[], nextMeta: DiagramMeta = metaRef.current) => {
+      writeSnapshot(
+        {
+          nodes: flowNodesToDiagram(nextNodes),
+          edges: flowEdgesToDiagram(nextEdges),
+          meta: nextMeta,
+        },
+        true,
+      );
+    },
+    [writeSnapshot],
+  );
+
+  const showSnapshot = useCallback(
+    (snapshot: DiagramSnapshot) => {
+      const nextNodes = toFlowNodes(snapshot.nodes);
+      const nextEdges = toFlowEdges(snapshot.edges);
+      const nextMeta = snapshot.meta ?? emptyMeta();
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      metaRef.current = nextMeta;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      setMetaState(nextMeta);
+      writeSnapshot(snapshot, false);
+    },
+    [writeSnapshot],
+  );
+
   useEffect(() => {
     const doc = docRef.current;
     applySnapshot(doc, initialRef.current, "init");
     metaRef.current = initialRef.current.meta ?? emptyMeta();
     setMetaState(metaRef.current);
     setChat(getChatArray(doc).toArray());
-    undoRef.current = new Y.UndoManager([getNodeMap(doc), getEdgeMap(doc), getMetaMap(doc)], {
-      trackedOrigins: new Set([LOCAL_ORIGIN]),
-      captureTimeout: 500,
-    });
 
     const hydrateRemote = (_update: Uint8Array, origin: unknown) => {
       if (origin === LOCAL_ORIGIN || origin === "init") return;
@@ -811,14 +830,25 @@ export function useDiagramSync(opts: {
   }, []);
 
   const undo = useCallback(() => {
-    undoRef.current?.undo();
-    hydrateFromDoc(docRef.current);
-  }, [hydrateFromDoc]);
+    if (readOnly) return;
+    const snapshot = undoHistory(opts.diagramId);
+    if (snapshot) showSnapshot(snapshot);
+  }, [opts.diagramId, readOnly, showSnapshot]);
 
   const redo = useCallback(() => {
-    undoRef.current?.redo();
-    hydrateFromDoc(docRef.current);
-  }, [hydrateFromDoc]);
+    if (readOnly) return;
+    const snapshot = redoHistory(opts.diagramId);
+    if (snapshot) showSnapshot(snapshot);
+  }, [opts.diagramId, readOnly, showSnapshot]);
+
+  const restore = useCallback(
+    (entryId: string) => {
+      if (readOnly) return;
+      const snapshot = restoreHistory(opts.diagramId, entryId, snapshotFromDoc(docRef.current));
+      if (snapshot) showSnapshot(snapshot);
+    },
+    [opts.diagramId, readOnly, showSnapshot],
+  );
 
   const selected = useMemo(() => nodes.find((node) => node.selected), [nodes]);
   const selectedEdge = useMemo(() => edges.find((edge) => edge.selected), [edges]);
@@ -860,6 +890,7 @@ export function useDiagramSync(opts: {
     setCursor,
     undo,
     redo,
+    restore,
     flushPersistence: () => {
       if (persistTimer.current) {
         clearTimeout(persistTimer.current);

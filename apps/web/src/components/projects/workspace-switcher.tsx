@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { createWorkspace } from "@/actions/projects";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -11,32 +11,41 @@ import { Modal, ModalContent } from "@/components/ui/modal";
 
 export function WorkspaceSwitcher({
   workspaces,
-  workspaceId,
+  activeWorkspaceId,
   onSelect,
+  onSelectPersonal,
 }: {
   workspaces: { id: string; name: string }[];
-  workspaceId?: string;
+  activeWorkspaceId?: string;
   onSelect: (id: string) => void;
+  onSelectPersonal: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const current = workspaces.find((item) => item.id === workspaceId) ?? workspaces[0];
+  const current = workspaces.find((item) => item.id === activeWorkspaceId);
 
   return (
     <>
       <Menu>
         <MenuTrigger asChild>
-          <button className="mt-5 mb-4 flex h-10 w-full items-center justify-between rounded-xl border border-[#232326] bg-[#141416] px-3 text-sm">
+          <button
+            type="button"
+            className="mt-5 mb-4 flex h-10 w-full items-center justify-between rounded-xl border border-[#232326] bg-[#141416] px-3 text-sm"
+          >
             <span className="truncate">{current?.name ?? "Personal"}</span>
             <ChevronDown className="size-4 shrink-0 text-zinc-500" />
           </button>
         </MenuTrigger>
         <MenuContent className="w-[220px]">
+          <SwitcherItem label="Personal" active={!current} onSelect={onSelectPersonal} />
           {workspaces.map((workspace) => (
-            <MenuItem key={workspace.id} onSelect={() => onSelect(workspace.id)}>
-              {workspace.name}
-            </MenuItem>
+            <SwitcherItem
+              key={workspace.id}
+              label={workspace.name}
+              active={workspace.id === current?.id}
+              onSelect={() => onSelect(workspace.id)}
+            />
           ))}
           <MenuItem onSelect={() => setOpen(true)}>
             <Plus className="size-3.5" /> New team
@@ -71,5 +80,22 @@ export function WorkspaceSwitcher({
         </ModalContent>
       </Modal>
     </>
+  );
+}
+
+function SwitcherItem({
+  label,
+  active,
+  onSelect,
+}: {
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <MenuItem onSelect={onSelect} className="justify-between">
+      <span className="truncate">{label}</span>
+      {active ? <Check className="size-3.5 shrink-0 text-zinc-400" /> : null}
+    </MenuItem>
   );
 }

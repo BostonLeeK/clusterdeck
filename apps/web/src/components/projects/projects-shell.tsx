@@ -22,6 +22,7 @@ import { deleteProjectForever, restoreProject, trashProject } from "@/actions/pr
 import { McpTokenDialog } from "@/components/projects/mcp-token-dialog";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
+import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import { TeamManageDialog } from "@/components/projects/team-manage-dialog";
 import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
@@ -77,6 +78,7 @@ export function ProjectsShell({
   const router = useRouter();
   const pathname = usePathname();
   const view = params.get("view") === "list" ? "list" : "grid";
+  const layout = filter === "templates" ? "grid" : view;
   const activeFilter = filter === "trash" || filter === "templates" || filter === "team" ? "all" : filter;
   const [profileOpen, setProfileOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
@@ -104,7 +106,12 @@ export function ProjectsShell({
             <Logo />
           </Link>
         </div>
-        <WorkspaceSwitcher workspaces={workspaces} workspaceId={workspaceId} onSelect={selectWorkspace} />
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeWorkspaceId={filter === "team" ? workspaceId : undefined}
+          onSelect={selectWorkspace}
+          onSelectPersonal={() => router.push("/projects?filter=all")}
+        />
         <nav className="space-y-0.5 text-[13px] text-zinc-400">
           <Nav href="/projects?filter=all" active={filter === "all"} icon={<Folder className="size-4" />}>
             My projects
@@ -308,7 +315,7 @@ export function ProjectsShell({
           {filter !== "templates" && projects.length === 0 ? (
             <EmptyProjects filter={filter} workspaceId={workspaceId} />
           ) : (
-          <div className={view === "grid" ? "grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-3"}>
+          <div className={layout === "grid" ? "grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
             {filter === "templates"
               ? PROJECT_TEMPLATES.map((template) => (
                   <article key={template.id} className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
@@ -324,103 +331,46 @@ export function ProjectsShell({
                         </span>
                       ))}
                     </div>
-                    <CreateProjectButton
-                      workspaceId={workspaceId}
-                      defaultTemplate={template.id}
-                      triggerClassName="mt-auto inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
-                    >
-                      Use template
-                    </CreateProjectButton>
+                    <div className="mt-auto pt-4">
+                      <CreateProjectButton
+                        workspaceId={workspaceId}
+                        defaultTemplate={template.id}
+                        triggerClassName="inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
+                      >
+                        Use template
+                      </CreateProjectButton>
+                    </div>
                   </article>
                 ))
-              : projects.map((project) => (
-              <article
-                key={project.id}
-                className="flex h-full flex-col rounded-2xl border border-border bg-card p-4"
-              >
-                <Link
-                  href={project.rootDiagramId ? `/editor/${project.id}/${project.rootDiagramId}` : "/projects"}
-                  className="block min-w-0"
-                >
-                  <div className="rounded-xl bg-surface px-2 pt-2">
-                    <DiagramPreview snapshot={project.snapshot} />
-                  </div>
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <h2 className="min-w-0 truncate text-[15px] font-medium leading-6">{project.name}</h2>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] leading-4 text-zinc-400">
-                      <Users className="size-3" />
-                      {project.kind === "shared" ? "Shared" : "Personal"}
-                    </span>
-                  </div>
-                  {project.description ? (
-                    <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{project.description}</p>
-                  ) : null}
-                </Link>
-                {project.tags.length ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {project.tags.map((tag) => (
-                      <span
-                        key={tag.id}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
-                      >
-                        <span className="size-1.5 rounded-full" style={{ background: tag.color }} />
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="mt-auto pt-4">
-                  <div className="flex items-center justify-between border-t border-border pt-3 text-[11px] text-zinc-500">
-                  <div className="flex items-center">
-                    <div className="flex -space-x-1.5">
-                      {project.members.slice(0, 3).map((member) => (
-                        <Avatar
-                          key={member.id}
-                          name={member.name}
-                          email={member.email}
-                          image={member.image}
-                          className="size-6 ring-2 ring-card"
-                        />
-                      ))}
-                    </div>
-                    {project.members.length > 3 ? (
-                      <span className="ml-2">+{project.members.length - 3}</span>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span>{timeAgo(project.updatedAt)}</span>
-                    <Menu>
-                      <MenuTrigger asChild>
-                        <button className="rounded p-1 hover:bg-white/5">
-                          <MoreHorizontal className="size-4" />
-                        </button>
-                      </MenuTrigger>
-                      <MenuContent>
-                        {filter === "trash" ? (
-                          <>
-                            <MenuItem onSelect={() => restoreProject(project.id)}>Restore</MenuItem>
-                            <MenuItem onSelect={() => deleteProjectForever(project.id)}>Delete</MenuItem>
-                          </>
-                        ) : (
-                          <MenuItem onSelect={() => trashProject(project.id)}>Move to trash</MenuItem>
-                        )}
-                      </MenuContent>
-                    </Menu>
-                  </div>
-                  </div>
-                </div>
-              </article>
-            ))}
+              : projects.map((project) =>
+                  layout === "list" ? (
+                    <ProjectRow key={project.id} project={project} trashed={filter === "trash"} />
+                  ) : (
+                    <ProjectTile key={project.id} project={project} trashed={filter === "trash"} />
+                  ),
+                )}
             {filter !== "trash" && filter !== "templates" ? (
               <CreateProjectButton
                 workspaceId={filter === "team" ? workspaceId : undefined}
-                triggerClassName="flex h-full min-h-[292px] flex-col items-center justify-center rounded-2xl border border-dashed border-border text-zinc-500 hover:bg-white/[0.02]"
+                triggerClassName={
+                  layout === "list"
+                    ? "flex w-full items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3 text-left text-zinc-500 hover:bg-white/[0.02]"
+                    : "flex h-full min-h-[292px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center text-zinc-500 hover:bg-white/[0.02]"
+                }
               >
-                <span className="mb-3 grid size-14 place-items-center rounded-full border border-border">
-                  <Plus className="size-6" />
+                <span
+                  className={`grid shrink-0 place-items-center rounded-full border border-border ${
+                    layout === "list" ? "size-9" : "mb-3 size-14"
+                  }`}
+                >
+                  <Plus className={layout === "list" ? "size-4" : "size-6"} />
                 </span>
-                <span className="text-sm text-zinc-200">Create new project</span>
-                <span className="mt-1 text-xs text-zinc-500">Start from a template or an empty diagram</span>
+                <span className="min-w-0">
+                  <span className="block text-sm text-zinc-200">Create new project</span>
+                  <span className="mt-0.5 block text-xs text-zinc-500">
+                    Start from a template or an empty diagram
+                  </span>
+                </span>
               </CreateProjectButton>
             ) : null}
           </div>
@@ -428,6 +378,138 @@ export function ProjectsShell({
         </main>
       </div>
     </div>
+  );
+}
+
+function projectHref(project: ProjectCard) {
+  return project.rootDiagramId ? `/editor/${project.id}/${project.rootDiagramId}` : "/projects";
+}
+
+function KindBadge({ kind }: { kind: ProjectCard["kind"] }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] leading-4 text-zinc-400">
+      <Users className="size-3" />
+      {kind === "shared" ? "Shared" : "Personal"}
+    </span>
+  );
+}
+
+function ProjectTags({ tags, className }: { tags: ProjectCard["tags"]; className?: string }) {
+  if (!tags.length) return null;
+  return (
+    <div className={`flex flex-wrap gap-2 ${className ?? ""}`}>
+      {tags.map((tag) => (
+        <span
+          key={tag.id}
+          className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300"
+        >
+          <span className="size-1.5 rounded-full" style={{ background: tag.color }} />
+          {tag.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ProjectMembers({ members }: { members: ProjectCard["members"] }) {
+  return (
+    <div className="flex items-center">
+      <div className="flex -space-x-1.5">
+        {members.slice(0, 3).map((member) => (
+          <Avatar
+            key={member.id}
+            name={member.name}
+            email={member.email}
+            image={member.image}
+            className="size-6 ring-2 ring-card"
+          />
+        ))}
+      </div>
+      {members.length > 3 ? <span className="ml-2">+{members.length - 3}</span> : null}
+    </div>
+  );
+}
+
+function ProjectActions({ project, trashed }: { project: ProjectCard; trashed: boolean }) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="whitespace-nowrap">{timeAgo(project.updatedAt)}</span>
+      <Menu>
+        <MenuTrigger asChild>
+          <button type="button" className="rounded p-1 hover:bg-white/5">
+            <MoreHorizontal className="size-4" />
+          </button>
+        </MenuTrigger>
+        <MenuContent>
+          {trashed ? (
+            <>
+              <MenuItem onSelect={() => restoreProject(project.id)}>Restore</MenuItem>
+              <MenuItem onSelect={() => deleteProjectForever(project.id)}>Delete</MenuItem>
+            </>
+          ) : (
+            <>
+              <MenuItem onSelect={() => setEditing(true)}>Edit details</MenuItem>
+              <MenuItem onSelect={() => trashProject(project.id)}>Move to trash</MenuItem>
+            </>
+          )}
+        </MenuContent>
+      </Menu>
+      <EditProjectDialog project={project} open={editing} onOpenChange={setEditing} />
+    </div>
+  );
+}
+
+function ProjectTile({ project, trashed }: { project: ProjectCard; trashed: boolean }) {
+  return (
+    <article className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
+      <Link href={projectHref(project)} className="block min-w-0">
+        <div className="rounded-xl bg-surface px-2 pt-2">
+          <DiagramPreview snapshot={project.snapshot} />
+        </div>
+        <div className="mt-3 flex items-start justify-between gap-3">
+          <h2 className="min-w-0 truncate text-[15px] font-medium leading-6">{project.name}</h2>
+          <KindBadge kind={project.kind} />
+        </div>
+        {project.description ? (
+          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{project.description}</p>
+        ) : null}
+      </Link>
+      <ProjectTags tags={project.tags} className="mt-3" />
+      <div className="mt-auto pt-4">
+        <div className="flex items-center justify-between border-t border-border pt-3 text-[11px] text-zinc-500">
+          <ProjectMembers members={project.members} />
+          <ProjectActions project={project} trashed={trashed} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProjectRow({ project, trashed }: { project: ProjectCard; trashed: boolean }) {
+  return (
+    <article className="flex items-center gap-4 rounded-2xl border border-border bg-card p-2 pr-4 hover:border-zinc-700">
+      <Link href={projectHref(project)} className="flex min-w-0 flex-1 items-center gap-4">
+        <div className="w-44 shrink-0 overflow-hidden rounded-xl bg-surface">
+          <DiagramPreview snapshot={project.snapshot} className="h-[72px]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="min-w-0 truncate text-sm font-medium">{project.name}</h2>
+            <KindBadge kind={project.kind} />
+          </div>
+          {project.description ? (
+            <p className="mt-0.5 truncate text-[13px] text-zinc-500">{project.description}</p>
+          ) : null}
+          <ProjectTags tags={project.tags} className="mt-2 hidden md:flex" />
+        </div>
+      </Link>
+      <div className="flex shrink-0 items-center gap-4 text-[11px] text-zinc-500">
+        <ProjectMembers members={project.members} />
+        <ProjectActions project={project} trashed={trashed} />
+      </div>
+    </article>
   );
 }
 

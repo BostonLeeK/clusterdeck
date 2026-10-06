@@ -41,6 +41,7 @@ import { openOrCreateInnerDiagram } from "@/actions/diagrams";
 import { setProjectMcpEnabled } from "@/actions/mcp";
 import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
+import { HistoryMenu } from "@/components/editor/history-menu";
 import { LabeledEdge } from "@/components/editor/labeled-edge";
 import { GroupNode, InfraNode, NoteNode, PortNode } from "@/components/editor/nodes";
 import { EdgeDetails } from "@/components/editor/edge-details";
@@ -116,10 +117,6 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [presenceUser, setPresenceUser] = useState(props.user);
   const [mcpOn, setMcpOn] = useState(Boolean(props.mcpEnabled));
-
-  useEffect(() => {
-    setMcpOn(Boolean(props.mcpEnabled));
-  }, [props.mcpEnabled]);
 
   useEffect(() => {
     if (!isGuestUser(props.user)) {
@@ -645,6 +642,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </Button>
           ) : (
             <>
+              <HistoryMenu diagramId={props.diagramId} readOnly={sync.readOnly} onRestore={sync.restore} />
               <ShareDialog
                 projectId={props.projectId}
                 shareToken={props.shareToken}
@@ -655,10 +653,20 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 canManage={sync.role === "owner" || props.user.id === props.ownerId}
               />
               <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
-              <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.undo}>
+              <button
+                type="button"
+                title="Undo (Ctrl+Z)"
+                className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5"
+                onClick={sync.undo}
+              >
                 <Undo2 className="size-4" />
               </button>
-              <button className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5" onClick={sync.redo}>
+              <button
+                type="button"
+                title="Redo (Ctrl+Shift+Z)"
+                className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5"
+                onClick={sync.redo}
+              >
                 <Redo2 className="size-4" />
               </button>
             </>

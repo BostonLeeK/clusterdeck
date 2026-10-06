@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, diagrams, projectMembers, projectTags, projects, workspaceMembers, workspaces } from "@dataflow/db";
-import { emptySnapshot, templateById } from "@dataflow/shared";
-import { requireUser } from "@/lib/queries";
+import { canEdit, emptySnapshot, templateById, type MemberRole } from "@dataflow/shared";
+import { getAccess, requireUser } from "@/lib/queries";
 
 export async function createProject(formData: FormData) {
   try {
@@ -51,24 +51,47 @@ export async function createProject(formData: FormData) {
   }
 }
 
-export async function trashProject(projectId: string) {
+async function requireProjectRole(projectId: string, allowed: (role: MemberRole) => boolean) {
   const user = await requireUser();
-  await db
-    .update(projects)
-    .set({ deletedAt: new Date() })
-    .where(eq(projects.id, projectId));
-  void user;
+  const access = await getAccess(projectId, user.id);
+  if (!access || !allowed(access.role)) throw new Error("forbidden");
+  return access;
+}
+
+export async function updateProject(projectId: string, input: { name: string; description: string }) {
+  try {
+    await requireProjectRole(projectId, canEdit);
+    const name = input.name.trim();
+    if (!name) return { error: "Name is required." };
+    const description = input.description.trim();
+    await db.update(projects).set({ name, description, updatedAt: new Date() }).where(eq(projects.id, projectId));
+    await db
+      .update(diagrams)
+      .set({ name })
+      .where(and(eq(diagrams.projectId, projectId), isNull(diagrams.parentDiagramId)));
+    revalidatePath("/projects");
+    revalidatePath(`/editor/${projectId}`, "layout");
+    return { ok: true };
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    return { error: "You can't edit this project." };
+  }
+}
+
+export async function trashProject(projectId: string) {
+  await requireProjectRole(projectId, canEdit);
+  await db.update(projects).set({ deletedAt: new Date() }).where(eq(projects.id, projectId));
   revalidatePath("/projects");
 }
 
 export async function restoreProject(projectId: string) {
-  await requireUser();
+  await requireProjectRole(projectId, canEdit);
   await db.update(projects).set({ deletedAt: null }).where(eq(projects.id, projectId));
   revalidatePath("/projects");
 }
 
 export async function deleteProjectForever(projectId: string) {
-  await requireUser();
+  await requireProjectRole(projectId, (role) => role === "owner");
   await db.delete(projects).where(eq(projects.id, projectId));
   revalidatePath("/projects");
 }

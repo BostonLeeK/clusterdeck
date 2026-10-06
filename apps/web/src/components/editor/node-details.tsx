@@ -534,17 +534,25 @@ function InfraDetails({
           <Field label="Title">
             <Input value={data.title} onChange={(event) => patch({ title: event.target.value })} />
           </Field>
+          <Field label="Subtitle">
+            <Input
+              value={data.subtitle ?? ""}
+              placeholder={meta?.subtitle ?? "Shown under the title"}
+              onChange={(event) => patch({ subtitle: event.target.value || undefined })}
+            />
+          </Field>
           <Field label="Type">
             <FormSelect
               value={data.typeId}
               onValueChange={(next) => {
                 const typeId = next as InfraNodeData["typeId"];
-                const meta = nodeTypeById(typeId);
+                const nextMeta = nodeTypeById(typeId);
+                const customSubtitle = data.subtitle && data.subtitle !== meta?.subtitle;
                 patch({
                   typeId,
-                  subtitle: meta?.subtitle ?? data.subtitle,
-                  shape: meta?.defaultShape,
-                  scope: meta?.defaultScope,
+                  subtitle: customSubtitle ? data.subtitle : nextMeta?.subtitle,
+                  shape: nextMeta?.defaultShape,
+                  scope: nextMeta?.defaultScope,
                   accentColor: undefined,
                 });
               }}
