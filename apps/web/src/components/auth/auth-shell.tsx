@@ -1,145 +1,150 @@
 import type { ReactNode } from "react";
-import { Boxes, Cpu, Database, HardDrive, Network, Users } from "lucide-react";
-import { Icon } from "@iconify/react";
+import type { LucideIcon } from "lucide-react";
+import { Box, Circle, Cylinder, Hexagon } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { cn } from "@/lib/utils";
 
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-[#0b0b0d] lg:grid-cols-2">
-      <div className="relative hidden flex-col justify-between p-10 lg:flex">
-        <Logo size="xl" />
+    <div className="grid min-h-screen grid-cols-1 bg-[#121214] lg:grid-cols-2">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-[#0d0d0f] p-10 lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_45%,rgba(99,102,241,0.08),transparent_60%)]"
+        />
+        <Logo size="xl" className="relative" />
         <AuthHeroGraph />
-        <p className="max-w-md text-[42px] leading-[1.05] font-semibold tracking-tight">
+        <p className="relative max-w-md text-[40px] leading-[1.1] font-medium tracking-tight text-zinc-100">
           Map your infrastructure.
           <br />
           Together.
         </p>
       </div>
       <div className="flex items-center justify-center p-5 sm:p-8 lg:border-l lg:border-[#1e1e22]">
-        <div className="w-full max-w-[380px]">{children}</div>
+        <div className="w-full max-w-[360px]">{children}</div>
       </div>
     </div>
   );
+}
+
+type HeroNode = {
+  id: string;
+  x: number;
+  y: number;
+  title: string;
+  subtitle: string;
+  icon: LucideIcon;
+  color: string;
+  tint?: string;
+};
+
+type HeroEdge = { from: string; to: string; color: string; label?: { text: string; x: number; y: number } };
+
+const NODE_WIDTH = 124;
+const NODE_HEIGHT = 44;
+const FONT = "Inter, system-ui, sans-serif";
+
+const HERO_NODES: HeroNode[] = [
+  { id: "client", x: 0, y: 138, title: "Web client", subtitle: "entry point", icon: Circle, color: "#d4d4d8" },
+  { id: "gateway", x: 184, y: 40, title: "API gateway", subtitle: "HTTPS · ingress", icon: Hexagon, color: "#818cf8" },
+  { id: "auth", x: 184, y: 138, title: "Auth service", subtitle: "gRPC · core", icon: Hexagon, color: "#818cf8" },
+  { id: "worker", x: 184, y: 236, title: "Event worker", subtitle: "async · queue", icon: Hexagon, color: "#34d399" },
+  { id: "postgres", x: 374, y: 88, title: "PostgreSQL", subtitle: "primary data", icon: Cylinder, color: "#34d399" },
+  {
+    id: "queue",
+    x: 374,
+    y: 188,
+    title: "Message queue",
+    subtitle: "events · Kafka",
+    icon: Box,
+    color: "#fb923c",
+    tint: "#1c1714",
+  },
+];
+
+const HUB = { x: 530, y: 132, width: 22, height: 56 };
+
+const HERO_EDGES: HeroEdge[] = [
+  { from: "client", to: "gateway", color: "#6366f1", label: { text: "HTTPS", x: 146, y: 96 } },
+  { from: "client", to: "auth", color: "#6366f1", label: { text: "gRPC", x: 150, y: 154 } },
+  { from: "client", to: "worker", color: "#6366f1", label: { text: "events", x: 144, y: 226 } },
+  { from: "gateway", to: "postgres", color: "#52525b", label: { text: "SQL", x: 334, y: 72 } },
+  { from: "auth", to: "postgres", color: "#52525b" },
+  { from: "auth", to: "queue", color: "#52525b", label: { text: "async", x: 334, y: 196 } },
+  { from: "worker", to: "queue", color: "#6366f1" },
+];
+
+const nodeById = new Map(HERO_NODES.map((node) => [node.id, node]));
+
+function curve(x1: number, y1: number, x2: number, y2: number) {
+  const mx = (x1 + x2) / 2;
+  return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
 }
 
 function AuthHeroGraph() {
+  const hubIn = { x: HUB.x, top: HUB.y + 16, bottom: HUB.y + HUB.height - 16 };
   return (
-    <div className="relative mx-auto aspect-[560/320] w-full max-w-[560px] overflow-hidden rounded-2xl border border-[#1e1e22] bg-[#0c0c0f]">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-35"
-        style={{
-          backgroundImage: "radial-gradient(#3f3f46 1px, transparent 1px)",
-          backgroundSize: "16px 16px",
-        }}
+    <svg viewBox="-4 20 560 280" className="relative mx-auto w-full max-w-[600px]" fill="none" aria-hidden>
+      {HERO_EDGES.map((edge) => {
+        const from = nodeById.get(edge.from)!;
+        const to = nodeById.get(edge.to)!;
+        const x1 = from.x + NODE_WIDTH;
+        const y1 = from.y + NODE_HEIGHT / 2;
+        const x2 = to.x;
+        const y2 = to.y + NODE_HEIGHT / 2;
+        return (
+          <g key={`${edge.from}-${edge.to}`}>
+            <path d={curve(x1, y1, x2, y2)} stroke={edge.color} strokeOpacity={0.55} strokeWidth={1.2} />
+            <circle cx={x2} cy={y2} r={2.2} fill={edge.color} />
+            {edge.label ? (
+              <text x={edge.label.x} y={edge.label.y} fill="#71717a" fontSize={8} fontFamily={FONT}>
+                {edge.label.text}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
+      <path
+        d={curve(374 + NODE_WIDTH, 110, hubIn.x, hubIn.top)}
+        stroke="#34d399"
+        strokeOpacity={0.55}
+        strokeWidth={1.2}
       />
-
-      <svg className="absolute inset-0 size-full" viewBox="0 0 560 320" fill="none" aria-hidden>
-        <path d="M156 160 C 190 160, 190 64, 224 64" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M156 160 C 190 160, 190 160, 224 160" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M156 160 C 190 160, 190 256, 224 256" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M384 64 C 410 64, 410 112, 392 112" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M384 160 C 410 160, 410 112, 392 112" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M384 160 C 410 160, 410 208, 392 208" stroke="#3f3f46" strokeWidth="1.5" />
-        <path d="M384 256 C 410 256, 410 208, 392 208" stroke="#3f3f46" strokeWidth="1.5" />
-        <text x="178" y="108" fill="#71717a" fontSize="10">
-          HTTPS
-        </text>
-        <text x="182" y="152" fill="#71717a" fontSize="10">
-          gRPC
-        </text>
-        <text x="178" y="214" fill="#71717a" fontSize="10">
-          events
-        </text>
-        <text x="400" y="96" fill="#71717a" fontSize="10">
-          SQL
-        </text>
-        <text x="400" y="192" fill="#71717a" fontSize="10">
-          TCP
-        </text>
-      </svg>
-
-      <div className="absolute top-[128px] left-[16px] w-[140px]">
-        <HeroNode icon={<Users className="size-3.5" />} accent="#a1a1aa" title="mobile-app" subtitle="Client · iOS / Android" />
-      </div>
-      <div className="absolute top-[32px] left-[224px] w-[160px]">
-        <HeroNode icon={<Network className="size-3.5" />} accent="#60a5fa" title="api-gateway" subtitle="CloudFront · ingress" />
-      </div>
-      <div className="absolute top-[128px] left-[224px] w-[160px]">
-        <HeroNode
-          icon={<Boxes className="size-3.5" />}
-          accent="#818cf8"
-          title="auth-service"
-          subtitle="Node.js · Service"
-          selected
-          chips={[
-            { icon: "lucide:plug", label: "8080" },
-            { icon: "simple-icons:kubernetes", label: "k8s" },
-          ]}
-        />
-      </div>
-      <div className="absolute top-[224px] left-[224px] w-[160px]">
-        <HeroNode icon={<Cpu className="size-3.5" />} accent="#34d399" title="auth-worker" subtitle="Queue · 1 replica" />
-      </div>
-      <div className="absolute top-[80px] left-[392px] w-[152px]">
-        <HeroNode icon={<Database className="size-3.5" />} accent="#38bdf8" title="postgres-main" subtitle="PostgreSQL · primary" />
-      </div>
-      <div className="absolute top-[176px] left-[392px] w-[152px]">
-        <HeroNode icon={<HardDrive className="size-3.5" />} accent="#f97316" title="redis-cache" subtitle="Redis · sessions" />
-      </div>
-    </div>
+      <path
+        d={curve(374 + NODE_WIDTH, 210, hubIn.x, hubIn.bottom)}
+        stroke="#34d399"
+        strokeOpacity={0.55}
+        strokeWidth={1.2}
+      />
+      <rect x={HUB.x} y={HUB.y} width={HUB.width} height={HUB.height} rx={7} fill="#18181b" stroke="#2a2a2e" />
+      <circle cx={HUB.x + HUB.width / 2} cy={hubIn.top} r={4} stroke="#34d399" strokeWidth={1.3} />
+      <circle cx={HUB.x + HUB.width / 2} cy={hubIn.bottom} r={4} stroke="#818cf8" strokeWidth={1.3} />
+      {HERO_NODES.map((node) => (
+        <HeroCard key={node.id} node={node} />
+      ))}
+    </svg>
   );
 }
 
-function HeroNode({
-  icon,
-  accent,
-  title,
-  subtitle,
-  chips,
-  selected,
-}: {
-  icon: ReactNode;
-  accent: string;
-  title: string;
-  subtitle: string;
-  chips?: { icon: string; label: string }[];
-  selected?: boolean;
-}) {
+function HeroCard({ node }: { node: HeroNode }) {
+  const Icon = node.icon;
   return (
-    <div
-      className={cn(
-        "rounded-2xl border bg-[#141416] px-2.5 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.35)]",
-        selected && "ring-1 ring-indigo-400/35",
-      )}
-      style={{ borderColor: selected ? "#818cf8" : `${accent}66` }}
-    >
-      <div className="flex items-start justify-between gap-1.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-6 shrink-0 place-items-center rounded-md bg-white/5" style={{ color: accent }}>
-            {icon}
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-[11px] font-medium text-zinc-100">{title}</div>
-            <div className="truncate text-[9px] text-zinc-500">{subtitle}</div>
-          </div>
-        </div>
-        <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-emerald-400" />
-      </div>
-      {chips?.length ? (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {chips.map((chip) => (
-            <span
-              key={`${chip.icon}-${chip.label}`}
-              className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[9px] text-zinc-300"
-            >
-              <Icon icon={chip.icon} className="size-2.5 text-zinc-400" />
-              {chip.label}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <g>
+      <rect
+        x={node.x}
+        y={node.y}
+        width={NODE_WIDTH}
+        height={NODE_HEIGHT}
+        rx={8}
+        fill={node.tint ?? "#18181b"}
+        stroke={node.tint ? "#3a2a22" : "#2a2a2e"}
+      />
+      <Icon x={node.x + 12} y={node.y + 11} width={12} height={12} color={node.color} strokeWidth={1.6} />
+      <text x={node.x + 32} y={node.y + 19} fill="#f4f4f5" fontSize={9.5} fontWeight={500} fontFamily={FONT}>
+        {node.title}
+      </text>
+      <text x={node.x + 32} y={node.y + 31} fill="#71717a" fontSize={7.5} fontFamily={FONT}>
+        {node.subtitle}
+      </text>
+    </g>
   );
 }

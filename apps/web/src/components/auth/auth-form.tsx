@@ -65,7 +65,7 @@ export function AuthForm({
 
   return (
     <AuthShell>
-      <h1 className="mb-8 text-center text-[28px] font-semibold tracking-tight">
+      <h1 className="mb-7 text-center text-[24px] font-medium tracking-tight text-zinc-100">
         {mode === "sign-up" ? "Create your account" : "Sign in"}
       </h1>
       {info ? <p className="mb-4 text-center text-sm text-emerald-400">{info}</p> : null}

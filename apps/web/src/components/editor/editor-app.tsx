@@ -123,6 +123,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const isPublic = Boolean(props.forceReadOnly);
   const [tool, setTool] = useState<"select" | "pan">(isPublic ? "pan" : "select");
   const [zoom, setZoom] = useState(1);
+  const [viewportReady, setViewportReady] = useState(false);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
   const isMobile = useIsMobile();
   const navigation = useNavigationMode();
@@ -893,7 +894,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </div>
           ) : null}
           <DiagramPerspectiveProvider value={perspectiveValue}>
-            <div className="absolute inset-0">
+            <div
+              className={`absolute inset-0 transition-opacity duration-150 ${viewportReady ? "opacity-100" : "opacity-0"}`}
+            >
               <ReactFlow
               nodes={sync.nodes}
               edges={sync.edges}
@@ -1018,9 +1021,17 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (saved) {
                   void instance.setViewport(saved);
                   setZoom(saved.zoom);
+                  setViewportReady(true);
                   return;
                 }
-                void instance.fitView().then(() => setZoom(instance.getZoom()));
+                if (!instance.getNodes().length) {
+                  setViewportReady(true);
+                  return;
+                }
+                void instance
+                  .fitView()
+                  .then(() => setZoom(instance.getZoom()))
+                  .finally(() => setViewportReady(true));
               }}
               proOptions={{ hideAttribution: true }}
               className="bg-[#0b0b0d]"

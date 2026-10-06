@@ -1,88 +1,108 @@
-import type { DiagramNode, DiagramSnapshot } from "@dataflow/shared";
-import { nodeTypeById } from "@dataflow/shared";
+import type { LucideIcon } from "lucide-react";
+import type { DiagramSnapshot, InfraNodeData } from "@dataflow/shared";
+import { nodeTypeById, parseConnectorHandle } from "@dataflow/shared";
+import { NODE_ICONS } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 
-type Box = { node: DiagramNode; x: number; y: number; width: number; height: number };
-
-const TARGET_ASPECT = 4;
-const NOMINAL_HEIGHT = 132;
-const PADDING_RATIO = 0.08;
-const LABEL_MIN_HEIGHT_PX = 22;
-const LABEL_FONT_PX = 9;
-const FONT = "Inter, system-ui, sans-serif";
-
-const DEFAULT_SIZE: Record<DiagramNode["type"], { width: number; height: number }> = {
-  infra: { width: 240, height: 96 },
-  group: { width: 520, height: 280 },
-  note: { width: 240, height: 120 },
-  port: { width: 120, height: 32 },
+type PreviewNode = {
+  id: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  Icon: LucideIcon;
 };
 
-function accentOf(node: DiagramNode) {
-  if (node.data.kind === "infra") return node.data.accentColor ?? nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
-  if (node.data.kind === "note") return "#facc15";
-  return "#a1a1aa";
+type Placed = PreviewNode & { x: number; y: number };
+
+const MAX_PER_COLUMN = 3;
+const ENTRY_SIZE = 22;
+const ENTRY_COLUMN_WIDTH = 44;
+const CARD_WIDTH = 96;
+const CARD_HEIGHT = 24;
+const ROW_GAP = 8;
+const COLUMN_GAP = 44;
+const PADDING = 8;
+const MIN_HEIGHT = 72;
+const FONT = "Inter, system-ui, sans-serif";
+
+function truncate(text: string, max: number) {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function titleOf(node: DiagramNode) {
-  return "title" in node.data ? (node.data.title ?? "").trim() : "";
-}
-
-function layoutBoxes(snapshot: DiagramSnapshot): Box[] {
-  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
-  const absolute = (node: DiagramNode) => {
-    let { x, y } = node.position;
-    let parent = node.parentId ? byId.get(node.parentId) : undefined;
-    while (parent) {
-      x += parent.position.x;
-      y += parent.position.y;
-      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
-    }
-    return { x, y };
+function toPreviewNode(id: string, data: InfraNodeData): PreviewNode {
+  const meta = nodeTypeById(data.typeId);
+  return {
+    id,
+    title: data.title.trim() || meta?.label || "Untitled",
+    subtitle: data.subtitle?.trim() || meta?.subtitle || meta?.label || "",
+    color: data.accentColor ?? meta?.color ?? "#a1a1aa",
+    Icon: NODE_ICONS[data.typeId] ?? NODE_ICONS.service,
   };
-  return snapshot.nodes
-    .filter((node) => node.type !== "port")
-    .map((node) => {
-      const size = DEFAULT_SIZE[node.type] ?? DEFAULT_SIZE.infra;
-      return { node, ...absolute(node), width: node.width ?? size.width, height: node.height ?? size.height };
-    });
 }
 
-function frame(boxes: Box[]) {
-  const minX = Math.min(...boxes.map((box) => box.x));
-  const minY = Math.min(...boxes.map((box) => box.y));
-  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
-  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
-  const pad = Math.max(maxX - minX, maxY - minY) * PADDING_RATIO;
-  const spanX = maxX - minX + pad * 2;
-  const spanY = maxY - minY + pad * 2;
-  const fitWidth = Math.max(spanX, spanY * TARGET_ASPECT);
-  const coverWidth = Math.min(spanX, spanY * TARGET_ASPECT);
-  const width = Math.sqrt(fitWidth * coverWidth);
-  const height = width / TARGET_ASPECT;
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  return { x: centerX - width / 2, y: centerY - height / 2, width, height, scale: NOMINAL_HEIGHT / height };
-}
-
-function edgePath(source: Box, target: Box) {
-  const forward = target.x >= source.x + source.width;
-  const backward = source.x >= target.x + target.width;
-  if (forward || backward) {
-    const x1 = forward ? source.x + source.width : source.x;
-    const x2 = forward ? target.x : target.x + target.width;
-    const y1 = source.y + source.height / 2;
-    const y2 = target.y + target.height / 2;
-    const mx = (x1 + x2) / 2;
-    return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+function buildGraph(snapshot: DiagramSnapshot) {
+  const nodes = new Map<string, PreviewNode>();
+  for (const node of snapshot.nodes) {
+    if (node.data.kind === "infra") nodes.set(node.id, toPreviewNode(node.id, node.data));
   }
-  const below = target.y >= source.y;
-  const x1 = source.x + source.width / 2;
-  const x2 = target.x + target.width / 2;
-  const y1 = below ? source.y + source.height : source.y;
-  const y2 = below ? target.y : target.y + target.height;
-  const my = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+  const outgoing = new Map<string, Set<string>>();
+  const incoming = new Map<string, Set<string>>();
+  const resolve = (nodeId: string, handle: string | null | undefined) => {
+    const connector = parseConnectorHandle(handle);
+    return connector && nodes.has(connector.nodeId) ? connector.nodeId : nodeId;
+  };
+  for (const edge of snapshot.edges) {
+    const source = resolve(edge.source, edge.sourceHandle);
+    const target = resolve(edge.target, edge.targetHandle);
+    if (source === target || !nodes.has(source) || !nodes.has(target)) continue;
+    if (!outgoing.has(source)) outgoing.set(source, new Set());
+    if (!incoming.has(target)) incoming.set(target, new Set());
+    outgoing.get(source)!.add(target);
+    incoming.get(target)!.add(source);
+  }
+  const out = (id: string) => [...(outgoing.get(id) ?? [])];
+  const into = (id: string) => [...(incoming.get(id) ?? [])];
+  const linked = (a: string, b: string) => Boolean(outgoing.get(a)?.has(b) || outgoing.get(b)?.has(a));
+  return { nodes, out, into, linked };
+}
+
+function pickColumns(snapshot: DiagramSnapshot) {
+  const { nodes, out, into, linked } = buildGraph(snapshot);
+  const ids = [...nodes.keys()];
+  if (!ids.length) return { columns: [] as PreviewNode[][], linked };
+
+  const degree = (id: string) => out(id).length + into(id).length;
+  const sources = ids.filter((id) => into(id).length === 0 && out(id).length > 0);
+  const center =
+    [...(sources.length ? sources : ids)].sort((a, b) => out(b).length - out(a).length || degree(b) - degree(a))[0] ??
+    ids[0]!;
+
+  const neighbors = (id: string) => (out(id).length ? out(id) : into(id));
+  const seen = new Set([center]);
+  const take = (candidates: string[]) => {
+    const picked: string[] = [];
+    for (const id of candidates) {
+      if (picked.length >= MAX_PER_COLUMN || seen.has(id)) continue;
+      seen.add(id);
+      picked.push(id);
+    }
+    return picked;
+  };
+
+  const second = take(neighbors(center));
+  if (!second.length) {
+    return { columns: [ids.slice(0, MAX_PER_COLUMN).map((id) => nodes.get(id)!)], linked };
+  }
+  const third = take(second.flatMap(neighbors));
+  const columns = [[center], second, third]
+    .filter((column) => column.length)
+    .map((column) => column.map((id) => nodes.get(id)!));
+  return { columns, linked };
+}
+
+function columnTop(count: number, height: number, itemHeight: number) {
+  const total = count * itemHeight + (count - 1) * ROW_GAP;
+  return (height - total) / 2;
 }
 
 export function DiagramPreview({
@@ -92,94 +112,96 @@ export function DiagramPreview({
   snapshot: DiagramSnapshot;
   className?: string;
 }) {
-  const boxes = layoutBoxes(snapshot);
-  if (!boxes.length) return <div className={cn("rounded-xl bg-surface", className)} />;
+  const { columns, linked } = pickColumns(snapshot);
+  if (!columns.length) return <div className={cn("rounded-xl bg-surface", className)} />;
 
-  const view = frame(boxes);
-  const px = (value: number) => value / view.scale;
-  const radius = (box: Box, max: number) => Math.min(px(max), box.height * 0.3);
-  const byId = new Map(boxes.map((box) => [box.node.id, box]));
-  const groups = boxes.filter((box) => box.node.type === "group");
-  const items = boxes.filter((box) => box.node.type !== "group");
+  const hasEntry = columns.length > 1;
+  const tallest = Math.max(...columns.map((column) => column.length * CARD_HEIGHT + (column.length - 1) * ROW_GAP));
+  const height = Math.max(MIN_HEIGHT, tallest + PADDING * 2);
+  const columnX = (index: number) =>
+    !hasEntry || index === 0
+      ? PADDING
+      : PADDING + ENTRY_COLUMN_WIDTH + COLUMN_GAP + (index - 1) * (CARD_WIDTH + COLUMN_GAP);
+  const width = columnX(columns.length - 1) + CARD_WIDTH + PADDING;
 
-  const label = (box: Box) => {
-    if (box.height * view.scale < LABEL_MIN_HEIGHT_PX) return null;
-    const maxChars = Math.floor((box.width * view.scale - 16) / (LABEL_FONT_PX * 0.6));
-    const title = titleOf(box.node);
-    if (maxChars < 4 || !title) return null;
-    const text = title.length > maxChars ? `${title.slice(0, maxChars - 1)}…` : title;
-    return (
-      <text
-        x={box.x + px(8)}
-        y={box.y + box.height / 2}
-        dominantBaseline="central"
-        fill="#e4e4e7"
-        fontSize={px(LABEL_FONT_PX)}
-        fontFamily={FONT}
-      >
-        {text}
-      </text>
-    );
-  };
+  const placed: Placed[][] = columns.map((column, index) => {
+    const itemHeight = hasEntry && index === 0 ? ENTRY_SIZE : CARD_HEIGHT;
+    const top = columnTop(column.length, height, itemHeight);
+    return column.map((node, row) => ({ ...node, x: columnX(index), y: top + row * (itemHeight + ROW_GAP) }));
+  });
+
+  const links: { id: string; d: string }[] = [];
+  placed.forEach((column, index) => {
+    const next = placed[index + 1];
+    if (!next) return;
+    const isEntry = hasEntry && index === 0;
+    for (const source of column) {
+      const x1 = isEntry ? source.x + (ENTRY_COLUMN_WIDTH + ENTRY_SIZE) / 2 : source.x + CARD_WIDTH;
+      const y1 = source.y + (isEntry ? ENTRY_SIZE : CARD_HEIGHT) / 2;
+      for (const target of next) {
+        if (!linked(source.id, target.id)) continue;
+        const x2 = target.x;
+        const y2 = target.y + CARD_HEIGHT / 2;
+        const mx = (x1 + x2) / 2;
+        links.push({ id: `${source.id}-${target.id}`, d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}` });
+      }
+    }
+  });
 
   return (
     <svg
-      viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
-      preserveAspectRatio="xMidYMid slice"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
       className={cn("block w-full overflow-hidden", className)}
       aria-hidden
     >
-      {groups.map((box) => (
-        <rect
-          key={box.node.id}
-          x={box.x}
-          y={box.y}
-          width={box.width}
-          height={box.height}
-          rx={radius(box, 8)}
-          fill="#ffffff"
-          fillOpacity={0.025}
-          stroke="#ffffff"
-          strokeOpacity={0.08}
-          vectorEffect="non-scaling-stroke"
-        />
+      {links.map((link) => (
+        <path key={link.id} d={link.d} fill="none" stroke="#3f3f46" strokeWidth={0.8} />
       ))}
-      {snapshot.edges.map((edge) => {
-        const source = byId.get(edge.source);
-        const target = byId.get(edge.target);
-        if (!source || !target || source === target) return null;
-        return (
-          <path
-            key={edge.id}
-            d={edgePath(source, target)}
-            fill="none"
-            stroke="#71717a"
-            strokeOpacity={0.35}
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-        );
-      })}
-      {items.map((box) => {
-        const accent = accentOf(box.node);
-        return (
-          <g key={box.node.id}>
-            <rect
-              x={box.x}
-              y={box.y}
-              width={box.width}
-              height={box.height}
-              rx={radius(box, 5)}
-              fill={accent}
-              fillOpacity={box.node.type === "note" ? 0.08 : 0.16}
-              stroke={accent}
-              strokeOpacity={0.35}
-              vectorEffect="non-scaling-stroke"
-            />
-            {label(box)}
-          </g>
-        );
-      })}
+      {placed.map((column, index) =>
+        column.map((node) =>
+          hasEntry && index === 0 ? (
+            <EntryNode key={node.id} node={node} />
+          ) : (
+            <CardNode key={node.id} node={node} />
+          ),
+        ),
+      )}
     </svg>
+  );
+}
+
+function EntryNode({ node }: { node: Placed }) {
+  const left = node.x + (ENTRY_COLUMN_WIDTH - ENTRY_SIZE) / 2;
+  return (
+    <g>
+      <rect x={left} y={node.y} width={ENTRY_SIZE} height={ENTRY_SIZE} rx={6} fill="#18181b" stroke="#27272a" strokeWidth={0.6} />
+      <node.Icon x={left + 5.5} y={node.y + 5.5} width={11} height={11} color="#d4d4d8" strokeWidth={1.6} />
+      <text
+        x={node.x + ENTRY_COLUMN_WIDTH / 2}
+        y={node.y + ENTRY_SIZE + 8}
+        textAnchor="middle"
+        fill="#a1a1aa"
+        fontSize={6.5}
+        fontFamily={FONT}
+      >
+        {truncate(node.title, 12)}
+      </text>
+    </g>
+  );
+}
+
+function CardNode({ node }: { node: Placed }) {
+  return (
+    <g>
+      <rect x={node.x} y={node.y} width={CARD_WIDTH} height={CARD_HEIGHT} rx={6} fill="#18181b" stroke="#27272a" strokeWidth={0.6} />
+      <node.Icon x={node.x + 7} y={node.y + 7} width={10} height={10} color={node.color} strokeWidth={1.8} />
+      <text x={node.x + 22} y={node.y + 10.5} fill="#f4f4f5" fontSize={7} fontWeight={500} fontFamily={FONT}>
+        {truncate(node.title, 18)}
+      </text>
+      <text x={node.x + 22} y={node.y + 18.5} fill="#71717a" fontSize={5.5} fontFamily={FONT}>
+        {truncate(node.subtitle, 24)}
+      </text>
+    </g>
   );
 }
