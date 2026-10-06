@@ -29,12 +29,15 @@ import {
   X,
 } from "lucide-react";
 import type {
+  ConnectorDirection,
   DiagramNode,
   InfraNodeData,
+  NodeConnector,
   NodeStatus,
   NoteNodeData,
   TagDef,
 } from "@dataflow/shared";
+import { listInnerNodes, type InnerNodeOption } from "@/actions/diagrams";
 import {
   ACCENT_SWATCHES,
   NODE_LIBRARY,
@@ -153,6 +156,8 @@ export function NodeDetails({
   onUngroup,
   onClose,
   readOnly,
+  groupChildren,
+  onConnectorsChange,
 }: {
   node?: Node;
   connections: { incoming: ConnectionItem[]; outgoing: ConnectionItem[] };
@@ -164,6 +169,8 @@ export function NodeDetails({
   onUngroup?: () => void;
   onClose?: () => void;
   readOnly: boolean;
+  groupChildren: InnerNodeOption[];
+  onConnectorsChange: (connectors: NodeConnector[]) => void;
 }) {
   if (!node) {
     return (
@@ -200,6 +207,13 @@ export function NodeDetails({
             </Button>
           </>
         ) : null}
+        <ConnectorsBlock
+          options={groupChildren}
+          connectors={payload.connectors ?? []}
+          readOnly={readOnly}
+          emptyText="Add nodes to this subworkflow first."
+          onChange={onConnectorsChange}
+        />
       </div>
     );
   }
@@ -224,6 +238,7 @@ export function NodeDetails({
       onOpenInner={onOpenInner}
       onSelectNode={onSelectNode}
       onClose={onClose}
+      onConnectorsChange={onConnectorsChange}
     />
   );
 }
@@ -315,6 +330,7 @@ function InfraDetails({
   onOpenInner,
   onSelectNode,
   onClose,
+  onConnectorsChange,
 }: {
   data: InfraNodeData;
   connections: { incoming: ConnectionItem[]; outgoing: ConnectionItem[] };
@@ -325,6 +341,7 @@ function InfraDetails({
   onOpenInner: () => void;
   onClose?: () => void;
   onSelectNode?: (id: string) => void;
+  onConnectorsChange: (connectors: NodeConnector[]) => void;
 }) {
   const meta = nodeTypeById(data.typeId);
   const Icon = NODE_ICONS[data.typeId];
@@ -339,9 +356,28 @@ function InfraDetails({
   const [techQuery, setTechQuery] = useState("");
   const canEdit = !readOnly && editing;
 
+  const [innerNodes, setInnerNodes] = useState<InnerNodeOption[] | null>(null);
+  const childDiagramId = data.childDiagramId ?? null;
+
   useEffect(() => {
     setEditing(false);
   }, [data.typeId]);
+
+  useEffect(() => {
+    if (!childDiagramId) return;
+    let cancelled = false;
+    setInnerNodes(null);
+    void listInnerNodes(childDiagramId)
+      .then((items) => {
+        if (!cancelled) setInnerNodes(items);
+      })
+      .catch(() => {
+        if (!cancelled) setInnerNodes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [childDiagramId]);
 
   function patch(partial: Partial<InfraNodeData>) {
     onChange({ ...data, ...partial });
@@ -803,9 +839,98 @@ function InfraDetails({
         </>
       )}
 
+      {childDiagramId ? (
+        <ConnectorsBlock
+          options={innerNodes}
+          connectors={data.connectors ?? []}
+          readOnly={readOnly}
+          emptyText="The inner diagram has no nodes yet."
+          onChange={onConnectorsChange}
+        />
+      ) : null}
+
       <Button className="mt-auto w-full" variant="secondary" onClick={onOpenInner}>
         Open inner diagram <ArrowRight className="size-4" />
       </Button>
+    </div>
+  );
+}
+
+function ConnectorsBlock({
+  options,
+  connectors,
+  readOnly,
+  emptyText,
+  onChange,
+}: {
+  options: InnerNodeOption[] | null;
+  connectors: NodeConnector[];
+  readOnly: boolean;
+  emptyText: string;
+  onChange: (connectors: NodeConnector[]) => void;
+}) {
+  const enabled = new Set(connectors.map((item) => `${item.direction}:${item.nodeId}`));
+  const known = new Set((options ?? []).map((item) => item.id));
+  const orphaned = connectors.filter((item) => options && !known.has(item.nodeId));
+  const rows: InnerNodeOption[] = [
+    ...(options ?? []),
+    ...orphaned
+      .filter((item, index, list) => list.findIndex((other) => other.nodeId === item.nodeId) === index)
+      .map((item) => ({ id: item.nodeId, title: item.title, kind: "infra" as const })),
+  ];
+
+  function toggle(option: InnerNodeOption, direction: ConnectorDirection) {
+    const key = `${direction}:${option.id}`;
+    if (enabled.has(key)) {
+      onChange(connectors.filter((item) => !(item.nodeId === option.id && item.direction === direction)));
+      return;
+    }
+    onChange([...connectors, { nodeId: option.id, title: option.title, direction }]);
+  }
+
+  return (
+    <div className="mt-4">
+      <Label>Connectors</Label>
+      <p className="mt-1 text-[11px] text-zinc-500">Pick which inner nodes get their own point on this frame.</p>
+      <div className="mt-2 space-y-1">
+        {options === null ? (
+          <p className="text-xs text-zinc-500">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-xs text-zinc-500">{emptyText}</p>
+        ) : (
+          rows.map((option) => {
+            const missing = !known.has(option.id);
+            return (
+              <div key={option.id} className="flex items-center gap-2 rounded-lg px-1 py-1 text-xs">
+                <span className={cn("min-w-0 flex-1 truncate", missing ? "text-zinc-600 line-through" : "text-zinc-200")}>
+                  {option.title}
+                </span>
+                {(["in", "out"] as const).map((direction) => {
+                  const active = enabled.has(`${direction}:${option.id}`);
+                  return (
+                    <button
+                      key={direction}
+                      type="button"
+                      disabled={readOnly || (missing && !active)}
+                      title={direction === "in" ? "Input on the left" : "Output on the right"}
+                      className={cn(
+                        "inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[11px] disabled:opacity-50",
+                        active
+                          ? "border-indigo-400/60 bg-indigo-400/15 text-indigo-200"
+                          : "border-[#2a2a2e] text-zinc-500 hover:text-zinc-200",
+                      )}
+                      onClick={() => toggle(option, direction)}
+                    >
+                      {direction === "in" ? <ArrowDownLeft className="size-3" /> : <ArrowUpRight className="size-3" />}
+                      {direction === "in" ? "In" : "Out"}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { DiagramEdge, DiagramNode, DiagramSnapshot, InfraNodeData } from "@dataflow/shared";
-import { normalizeNodeProperties } from "@dataflow/shared";
+import { normalizeNodeProperties, parseConnectorHandle } from "@dataflow/shared";
 
 export function mergeInheritedPorts(
   parent: DiagramSnapshot,
@@ -44,9 +44,27 @@ export function mergeInheritedPorts(
     }),
   ];
   const existing = new Set(child.nodes.map((node) => node.id));
+  const childIds = new Set(
+    child.nodes.filter((node) => node.data.kind === "infra" || node.data.kind === "group").map((node) => node.id),
+  );
+  const links: DiagramEdge[] = [
+    ...incoming.flatMap((edge) => {
+      const handle = parseConnectorHandle(edge.targetHandle);
+      if (!handle || handle.direction !== "in" || !childIds.has(handle.nodeId)) return [];
+      return [{ id: `port-link-${edge.id}`, source: `port-in-${edge.id}`, target: handle.nodeId, label: edge.label }];
+    }),
+    ...outgoing.flatMap((edge) => {
+      const handle = parseConnectorHandle(edge.sourceHandle);
+      if (!handle || handle.direction !== "out" || !childIds.has(handle.nodeId)) return [];
+      return [{ id: `port-link-${edge.id}`, source: handle.nodeId, target: `port-out-${edge.id}`, label: edge.label }];
+    }),
+  ];
+  const linkIds = new Set(links.map((edge) => edge.id));
+  const edges = child.edges.filter((edge) => !edge.id.startsWith("port-link-") || linkIds.has(edge.id));
+  const edgeIds = new Set(edges.map((edge) => edge.id));
   return {
     nodes: [...child.nodes, ...ports.filter((port) => !existing.has(port.id))],
-    edges: child.edges,
+    edges: [...edges, ...links.filter((edge) => !edgeIds.has(edge.id))],
     meta: child.meta,
   };
 }

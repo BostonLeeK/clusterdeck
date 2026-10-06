@@ -65,4 +65,4 @@ OAuth works when `AUTH_GITHUB_*` / `AUTH_GOOGLE_*` are set.
 
 ## MCP
 
-The realtime process also serves an MCP endpoint at `http://localhost:1235/mcp`. Each user creates a personal token from the account menu (MCP token) and sends it as `Authorization: Bearer <token>`. The token can read and edit only that user's diagrams. The server instructions describe the node types, technologies, and how `list_diagrams`, `get_diagram`, and `update_diagram` work. While an agent is changing the open diagram, a bot icon appears in the editor header next to the people and Share.
+The realtime process serves MCP, and the web app proxies it at `/mcp` (locally `http://localhost:3000/mcp`). Each user creates a personal token from the account menu and sends it as `Authorization: Bearer <token>`. Every diagram is hidden from that token until you turn MCP on for it, in the token dialog or with the MCP switch in the editor. The server instructions describe the node types, technologies, and how `list_diagrams`, `get_diagram`, and `update_diagram` work. While an agent is changing the open diagram, a bot icon appears in the editor header next to the people and Share.

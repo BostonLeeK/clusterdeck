@@ -5,6 +5,7 @@ import {
   primaryKey,
   integer,
   jsonb,
+  boolean,
   customType,
 } from "drizzle-orm/pg-core";
 import type { DiagramSnapshot } from "@dataflow/shared";
@@ -184,6 +185,7 @@ export const diagrams = dataflow.table("diagrams", {
   name: text("name").notNull(),
   ydocState: bytea("ydoc_state"),
   snapshot: jsonb("snapshot").$type<DiagramSnapshot>().notNull().default({ nodes: [], edges: [] }),
+  mcpEnabled: boolean("mcp_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });

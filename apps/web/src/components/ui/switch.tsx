@@ -6,18 +6,21 @@ import { cn } from "@/lib/utils";
 export function Switch({
   checked,
   onCheckedChange,
+  disabled,
   className,
 }: {
   checked: boolean;
   onCheckedChange: (value: boolean) => void;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
     <SwitchPrimitive.Root
       checked={checked}
+      disabled={disabled}
       onCheckedChange={onCheckedChange}
       className={cn(
-        "relative h-6 w-10 rounded-full bg-zinc-700 data-[state=checked]:bg-primary",
+        "relative h-6 w-10 rounded-full bg-zinc-700 data-[state=checked]:bg-primary disabled:opacity-50",
         className,
       )}
     >

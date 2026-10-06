@@ -105,7 +105,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
   server.registerTool(
     "list_diagrams",
     {
-      description: "List diagrams this user can access. Use the returned id with get_diagram and update_diagram.",
+      description: "List diagrams this token is allowed to open. Access is off until someone enables the diagram. Use the returned id with get_diagram and update_diagram.",
       inputSchema: z.object({ query: z.string().optional() }),
     },
     async ({ query }) => {
@@ -121,7 +121,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
         })
         .from(diagrams)
         .innerJoin(projects, eq(diagrams.projectId, projects.id))
-        .where(visibleProjects(userId))
+        .where(and(visibleProjects(userId), eq(diagrams.mcpEnabled, true)))
         .orderBy(desc(diagrams.updatedAt))
         .limit(200);
       const items = needle
@@ -140,15 +140,27 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
     async ({ diagramId }) => {
       try {
         const [row] = await db
-          .select({ id: diagrams.id, name: diagrams.name, projectId: diagrams.projectId, parentDiagramId: diagrams.parentDiagramId })
+          .select({
+            id: diagrams.id,
+            name: diagrams.name,
+            projectId: diagrams.projectId,
+            parentDiagramId: diagrams.parentDiagramId,
+            mcpEnabled: diagrams.mcpEnabled,
+          })
           .from(diagrams)
           .where(eq(diagrams.id, diagramId))
           .limit(1);
-        if (!row) return failure(new Error("diagram not found"));
+        if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
         const role = await projectRole(row.projectId, userId);
         if (!role) return failure(new Error("diagram not found"));
         const snapshot = await withDiagram(hocuspocus, diagramId, (doc) => snapshotFromDoc(doc));
-        return text({ ...row, snapshot });
+        return text({
+          id: row.id,
+          name: row.name,
+          projectId: row.projectId,
+          parentDiagramId: row.parentDiagramId,
+          snapshot,
+        });
       } catch (error) {
         return failure(error);
       }
@@ -170,11 +182,11 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
     async ({ diagramId, upsertNodes, deleteNodeIds, upsertEdges, deleteEdgeIds }) => {
       try {
         const [row] = await db
-          .select({ projectId: diagrams.projectId })
+          .select({ projectId: diagrams.projectId, mcpEnabled: diagrams.mcpEnabled })
           .from(diagrams)
           .where(eq(diagrams.id, diagramId))
           .limit(1);
-        if (!row) return failure(new Error("diagram not found"));
+        if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
         const role = await projectRole(row.projectId, userId);
         if (!canEditProject(role)) return failure(new Error("forbidden"));
         const result = await withDiagram(hocuspocus, diagramId, (doc) =>

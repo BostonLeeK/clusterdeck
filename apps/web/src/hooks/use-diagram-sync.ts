@@ -14,11 +14,13 @@ import {
 import * as Y from "yjs";
 import {
   applySnapshot,
+  connectorHandleId,
   emptyMeta,
   getChatArray,
   getEdgeMap,
   getMetaMap,
   getNodeMap,
+  parseConnectorHandle,
   snapshotFromDoc,
   type ChatMessage,
   type DiagramEdge,
@@ -28,6 +30,7 @@ import {
   type DiagramSnapshot,
   type EdgeLineShape,
   type MemberRole,
+  type NodeConnector,
   type TagDef,
 } from "@dataflow/shared";
 import { fromFlowNode, normalizeFlowInfraNode, toFlowEdges, toFlowNodes } from "@/lib/diagram";
@@ -62,6 +65,22 @@ function flowNodesToDiagram(nodes: Node[]): DiagramNode[] {
       data: node.data as DiagramNode["data"],
     }),
   );
+}
+
+function remapConnectors(data: Node["data"], idMap: Map<string, string>): Node["data"] {
+  const connectors = (data as { connectors?: NodeConnector[] }).connectors;
+  if (!connectors?.length) return data;
+  return {
+    ...data,
+    connectors: connectors.map((item) => ({ ...item, nodeId: idMap.get(item.nodeId) ?? item.nodeId })),
+  };
+}
+
+function remapHandle(handle: string | null | undefined, idMap: Map<string, string>) {
+  const parsed = parseConnectorHandle(handle);
+  if (!parsed) return handle;
+  const nodeId = idMap.get(parsed.nodeId);
+  return nodeId ? connectorHandleId(parsed.direction, nodeId) : handle;
 }
 
 function flowEdgesToDiagram(edges: Edge[]): DiagramEdge[] {
@@ -105,6 +124,7 @@ export function useDiagramSync(opts: {
   const initialRef = useRef(opts.initial);
   const providerRef = useRef<HocuspocusProvider | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
   const cursorTimer = useRef(0);
   const userRef = useRef(opts.user);
   userRef.current = opts.user;
@@ -164,6 +184,7 @@ export function useDiagramSync(opts: {
 
   const persistLocal = useCallback(
     (nextNodes: Node[], nextEdges: Edge[], nextMeta: DiagramMeta = metaRef.current) => {
+      dirtyRef.current = true;
       const doc = docRef.current;
       const snapshot: DiagramSnapshot = {
         nodes: flowNodesToDiagram(nextNodes),
@@ -303,11 +324,19 @@ export function useDiagramSync(opts: {
       cancelled = true;
       doc.off("update", hydrateRemote);
       getChatArray(doc).unobserve(refreshChat);
-      if (persistTimer.current) clearTimeout(persistTimer.current);
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
       if (mcpTimer) clearTimeout(mcpTimer);
       setMcpActive(false);
-      providerRef.current?.destroy();
+      const provider = providerRef.current;
+      if (!provider && dirtyRef.current) {
+        void saveDiagramSnapshot(opts.diagramId, snapshotFromDoc(doc)).catch(() => undefined);
+      }
+      provider?.destroy();
       providerRef.current = null;
+      dirtyRef.current = false;
       setConnected(false);
       setPresence([]);
     };
@@ -530,6 +559,32 @@ export function useDiagramSync(opts: {
     [persistLocal, readOnly],
   );
 
+  const setNodeConnectors = useCallback(
+    (id: string, connectors: NodeConnector[]) => {
+      if (readOnly) return;
+      const valid = new Set(connectors.map((item) => connectorHandleId(item.direction, item.nodeId)));
+      const nextNodes = nodesRef.current.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, connectors } } : node,
+      );
+      const nextEdges = edgesRef.current.map((edge) => {
+        const staleSource = edge.source === id && edge.sourceHandle && !valid.has(edge.sourceHandle);
+        const staleTarget = edge.target === id && edge.targetHandle && !valid.has(edge.targetHandle);
+        if (!staleSource && !staleTarget) return edge;
+        return {
+          ...edge,
+          sourceHandle: staleSource ? null : edge.sourceHandle,
+          targetHandle: staleTarget ? null : edge.targetHandle,
+        };
+      });
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      persistLocal(nextNodes, nextEdges);
+    },
+    [persistLocal, readOnly],
+  );
+
   const deleteNodes = useCallback(
     (ids: string[]) => {
       if (readOnly || !ids.length) return;
@@ -593,6 +648,87 @@ export function useDiagramSync(opts: {
     [persistLocal, readOnly],
   );
 
+  const pasteGraph = useCallback(
+    (
+      sourceNodes: Array<{
+        id: string;
+        type?: string | null;
+        position: { x: number; y: number };
+        parentId?: string;
+        width?: number;
+        height?: number;
+        data: Node["data"];
+      }>,
+      sourceEdges: Array<{
+        source: string;
+        target: string;
+        sourceHandle?: string | null;
+        targetHandle?: string | null;
+        label?: unknown;
+        data?: Edge["data"];
+      }>,
+      offset: { x: number; y: number },
+    ) => {
+      if (readOnly || !sourceNodes.length) return;
+      const idMap = new Map(sourceNodes.map((node) => [node.id, crypto.randomUUID()]));
+      const existing = new Set(nodesRef.current.map((node) => node.id));
+      const clones = sourceNodes.map((node) => {
+        const parentCopied = Boolean(node.parentId && idMap.has(node.parentId));
+        const parentKept = Boolean(node.parentId && !parentCopied && existing.has(node.parentId));
+        return {
+          id: idMap.get(node.id)!,
+          type: node.type ?? "infra",
+          selected: true,
+          parentId: parentCopied ? idMap.get(node.parentId!) : parentKept ? node.parentId : undefined,
+          extent: parentCopied || parentKept ? ("parent" as const) : undefined,
+          position: parentCopied
+            ? { ...node.position }
+            : { x: node.position.x + offset.x, y: node.position.y + offset.y },
+          width: node.width,
+          height: node.height,
+          data: remapConnectors(structuredClone(node.data), idMap),
+        };
+      });
+      const ordered = [...clones].sort((left, right) => {
+        const depth = (id: string) => {
+          let value = 0;
+          let parentId = clones.find((node) => node.id === id)?.parentId;
+          const seen = new Set<string>();
+          while (parentId && !seen.has(parentId)) {
+            seen.add(parentId);
+            value += 1;
+            parentId = clones.find((node) => node.id === parentId)?.parentId;
+          }
+          return value;
+        };
+        return depth(left.id) - depth(right.id);
+      });
+      const nextNodes = [...nodesRef.current.map((node) => ({ ...node, selected: false })), ...ordered];
+      const nextEdges = [
+        ...edgesRef.current.map((edge) => ({ ...edge, selected: false })),
+        ...sourceEdges
+          .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+          .map((edge) => ({
+            id: crypto.randomUUID(),
+            source: idMap.get(edge.source)!,
+            target: idMap.get(edge.target)!,
+            sourceHandle: remapHandle(edge.sourceHandle, idMap),
+            targetHandle: remapHandle(edge.targetHandle, idMap),
+            label: typeof edge.label === "string" ? edge.label : undefined,
+            selected: false,
+            data: edge.data ? structuredClone(edge.data) : undefined,
+            type: "labeled" as const,
+          })),
+      ];
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      persistLocal(nextNodes, nextEdges);
+    },
+    [persistLocal, readOnly],
+  );
+
   const duplicateNodes = useCallback(
     (ids: string[]) => {
       if (readOnly || !ids.length) return;
@@ -606,7 +742,7 @@ export function useDiagramSync(opts: {
         selected: true,
         parentId: node.parentId && idMap.has(node.parentId) ? idMap.get(node.parentId) : node.parentId,
         position: { x: node.position.x + 40, y: node.position.y + 40 },
-        data: structuredClone(node.data),
+        data: remapConnectors(structuredClone(node.data), idMap),
       }));
       const nextNodes = [
         ...nodesRef.current.map((node) => ({ ...node, selected: false })),
@@ -621,6 +757,8 @@ export function useDiagramSync(opts: {
             id: crypto.randomUUID(),
             source: idMap.get(edge.source)!,
             target: idMap.get(edge.target)!,
+            sourceHandle: remapHandle(edge.sourceHandle, idMap),
+            targetHandle: remapHandle(edge.targetHandle, idMap),
             selected: false,
           })),
       ];
@@ -704,9 +842,11 @@ export function useDiagramSync(opts: {
     toggleEdgeInFlow,
     replaceSnapshot,
     commitNodes,
+    setNodeConnectors,
     deleteNodes,
     deleteEdges,
     duplicateNodes,
+    pasteGraph,
     saved,
     connected,
     mcpActive,
@@ -720,6 +860,33 @@ export function useDiagramSync(opts: {
     setCursor,
     undo,
     redo,
+    flushPersistence: () => {
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
+      const provider = providerRef.current;
+      if (!provider) {
+        if (!dirtyRef.current) return Promise.resolve();
+        return saveDiagramSnapshot(opts.diagramId, snapshotFromDoc(docRef.current)).then(() => {
+          dirtyRef.current = false;
+          setSaved(true);
+        });
+      }
+      if (!provider.hasUnsyncedChanges) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          provider.off("unsyncedChanges", onUnsynced);
+          resolve();
+        };
+        const onUnsynced = ({ number }: { number: number }) => {
+          if (number === 0) finish();
+        };
+        const timer = setTimeout(finish, 1500);
+        provider.on("unsyncedChanges", onUnsynced);
+      });
+    },
     snapshot: () => ({
       nodes: flowNodesToDiagram(nodesRef.current),
       edges: flowEdgesToDiagram(edgesRef.current),

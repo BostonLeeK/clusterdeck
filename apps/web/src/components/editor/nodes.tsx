@@ -12,8 +12,10 @@ import {
 import { Icon as IconifyIcon } from "@iconify/react";
 import { Layers, MessageSquare, Type } from "lucide-react";
 import type {
+  ConnectorDirection,
   GroupNodeData,
   InfraNodeData,
+  NodeConnector,
   NodeLifecycle,
   NodeShape,
   NodeStatus,
@@ -21,6 +23,7 @@ import type {
   PortNodeData,
 } from "@dataflow/shared";
 import {
+  connectorHandleId,
   nodeTypeById,
   resolveAccentColor,
   resolveNodeScope,
@@ -34,6 +37,70 @@ import { useDiagramPerspective } from "@/components/editor/diagram-perspective";
 
 const INFRA_MIN_WIDTH = 200;
 const INFRA_MIN_HEIGHT = 72;
+const CONNECTOR_SPACING = 26;
+
+function connectorSlots(connectors: NodeConnector[] | undefined) {
+  const items = connectors ?? [];
+  return {
+    in: items.filter((item) => item.direction === "in"),
+    out: items.filter((item) => item.direction === "out"),
+  };
+}
+
+function connectorMinHeight(connectors: NodeConnector[] | undefined) {
+  const slots = connectorSlots(connectors);
+  const busiest = Math.max(slots.in.length, slots.out.length);
+  return busiest ? (busiest + 2) * CONNECTOR_SPACING : 0;
+}
+
+function ConnectorSide({
+  direction,
+  items,
+  className,
+}: {
+  direction: ConnectorDirection;
+  items: NodeConnector[];
+  className: string;
+}) {
+  const position = direction === "in" ? Position.Left : Position.Right;
+  const type = direction === "in" ? "target" : "source";
+  const total = items.length + 1;
+  const offset = (index: number) => `${((index + 1) / (total + 1)) * 100}%`;
+  return (
+    <>
+      <Handle type={type} position={position} className={className} style={items.length ? { top: offset(0) } : undefined} />
+      {items.map((item, index) => (
+        <Handle
+          key={item.nodeId}
+          id={connectorHandleId(direction, item.nodeId)}
+          type={type}
+          position={position}
+          className={cn(className, "!bg-indigo-400")}
+          style={{ top: offset(index + 1) }}
+        >
+          <span
+            className={cn(
+              "pointer-events-none absolute top-1/2 max-w-[140px] -translate-y-1/2 truncate rounded-md bg-[#141416]/90 px-1.5 py-0.5 text-[10px] whitespace-nowrap text-indigo-200",
+              direction === "in" ? "right-3" : "left-3",
+            )}
+          >
+            {item.title}
+          </span>
+        </Handle>
+      ))}
+    </>
+  );
+}
+
+function ConnectorHandles({ connectors, className }: { connectors?: NodeConnector[]; className: string }) {
+  const slots = connectorSlots(connectors);
+  return (
+    <>
+      <ConnectorSide direction="in" items={slots.in} className={className} />
+      <ConnectorSide direction="out" items={slots.out} className={className} />
+    </>
+  );
+}
 
 const STATUS_DOT: Record<NodeStatus, string> = {
   healthy: "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.2)]",
@@ -164,13 +231,19 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
   const hiddenByTag = Boolean(activeTag) && !matchesTag && perspective.tagMode === "hide";
   const onActiveFlow = Boolean(perspective.activeFlowId) && perspective.flowNodeIds.has(id);
   const dimmedByFlow = Boolean(perspective.activeFlowId) && !onActiveFlow;
+  const connectorHeight = connectorMinHeight(node.connectors);
+  const connectorKey = (node.connectors ?? []).map((item) => `${item.direction}:${item.nodeId}`).join("|");
+
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [connectorKey, id, updateNodeInternals]);
 
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
 
     const syncToContent = () => {
-      const nextHeight = Math.max(INFRA_MIN_HEIGHT, Math.ceil(el.scrollHeight) + 20);
+      const nextHeight = Math.max(INFRA_MIN_HEIGHT, connectorHeight, Math.ceil(el.scrollHeight) + 20);
       setContentMin((current) =>
         current.height === nextHeight ? current : { width: INFRA_MIN_WIDTH, height: nextHeight },
       );
@@ -196,6 +269,7 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
     return () => observer.disconnect();
   }, [
     canvasProperties.length,
+    connectorHeight,
     height,
     id,
     node.description,
@@ -215,9 +289,14 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
 
   return (
     <div
-      className={cn("relative box-border min-h-[72px] min-w-[200px]", sized && "size-full")}
+      className={cn(
+        "relative box-border min-h-[72px] min-w-[200px]",
+        sized && "size-full",
+        connectorHeight > 0 && "flex flex-col",
+      )}
       style={{
         ...lifecycleStyle(lifecycle),
+        minHeight: connectorHeight || undefined,
         opacity: dimmedByTag || dimmedByFlow ? 0.28 : lifecycle === "removed" ? 0.45 : undefined,
         outline:
           perspective.pinnedTag && matchesTag
@@ -235,15 +314,18 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
         lineClassName="border-indigo-400/40"
         handleClassName="!h-2.5 !w-2.5 !rounded-full !border-indigo-400 !bg-[#141416]"
       />
-      <Handle type="target" position={Position.Left} className="!size-2.5 !border-0 !bg-zinc-500" />
-      <Handle type="source" position={Position.Right} className="!size-2.5 !border-0 !bg-zinc-500" />
+      <ConnectorHandles connectors={node.connectors} className="!size-2.5 !border-0 !bg-zinc-500" />
       <Shell
         shape={shape}
         selected={selected || (Boolean(activeTag) && matchesTag)}
         accent={accent}
         dashed={scope === "external"}
         future={lifecycle === "future"}
-        className={cn(lifecycle === "deprecated" && "grayscale-[0.35]", sized && "size-full")}
+        className={cn(
+          lifecycle === "deprecated" && "grayscale-[0.35]",
+          sized && "size-full",
+          connectorHeight > 0 && "flex-1",
+        )}
       >
         <div ref={contentRef} className="w-full min-w-0">
         {shape === "actor" ? (
@@ -360,8 +442,15 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
   );
 });
 
-export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps) {
+export const GroupNode = memo(function GroupNode({ id, data, selected }: NodeProps) {
   const node = data as GroupNodeData;
+  const updateNodeInternals = useUpdateNodeInternals();
+  const connectorKey = (node.connectors ?? []).map((item) => `${item.direction}:${item.nodeId}`).join("|");
+
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [connectorKey, id, updateNodeInternals]);
+
   return (
     <div
       className={cn(
@@ -376,8 +465,7 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps) 
         lineClassName="border-indigo-400/50"
         handleClassName="!h-2 !w-2 !border-indigo-400 !bg-[#141416]"
       />
-      <Handle type="target" position={Position.Left} className="node-handle" />
-      <Handle type="source" position={Position.Right} className="node-handle" />
+      <ConnectorHandles connectors={node.connectors} className="node-handle" />
       <div className="pointer-events-none flex items-center gap-2">
         <div className="text-sm font-medium text-zinc-100">{node.title}</div>
         <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] text-indigo-300">

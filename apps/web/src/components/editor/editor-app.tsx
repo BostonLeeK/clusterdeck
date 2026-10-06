@@ -28,9 +28,17 @@ import {
   Undo2,
 } from "lucide-react";
 import Link from "next/link";
-import type { DiagramSnapshot, InfraNodeData, InfraNodeTypeId, MemberRole, TagDef } from "@dataflow/shared";
+import type {
+  DiagramNode,
+  DiagramSnapshot,
+  InfraNodeData,
+  InfraNodeTypeId,
+  MemberRole,
+  TagDef,
+} from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
 import { openOrCreateInnerDiagram } from "@/actions/diagrams";
+import { setDiagramMcpEnabled } from "@/actions/mcp";
 import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
 import { LabeledEdge } from "@/components/editor/labeled-edge";
@@ -54,6 +62,7 @@ import {
 } from "@/components/editor/canvas-context-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
@@ -82,6 +91,7 @@ export function EditorApp(props: {
   user: { id?: string | null; name?: string | null; email?: string | null; image?: string | null };
   insideLabel?: string;
   forceReadOnly?: boolean;
+  mcpEnabled?: boolean;
 }) {
   return (
     <ReactFlowProvider>
@@ -105,6 +115,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [tagMode, setTagMode] = useState<TagPerspectiveMode>("highlight");
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [presenceUser, setPresenceUser] = useState(props.user);
+  const [mcpOn, setMcpOn] = useState(Boolean(props.mcpEnabled));
+
+  useEffect(() => {
+    setMcpOn(Boolean(props.mcpEnabled));
+  }, [props.diagramId, props.mcpEnabled]);
 
   useEffect(() => {
     if (!isGuestUser(props.user)) {
@@ -170,6 +185,16 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     }),
     [activeFlow, activeFlowId, flowEdgeIds, flowNodeIds, hoveredTag, pinnedTag, sync.meta.flows, tagDefs, tagMode],
   );
+  const groupChildren = useMemo(() => {
+    if (!selected || selected.type !== "group") return [];
+    return sync.nodes.flatMap((node) => {
+      if (node.parentId !== selected.id) return [];
+      const data = node.data as DiagramNode["data"];
+      if (data.kind !== "infra" && data.kind !== "group") return [];
+      return [{ id: node.id, title: data.title || "Untitled", kind: data.kind }];
+    });
+  }, [selected, sync.nodes]);
+
   const connections = useMemo(() => {
     if (!selected) return { incoming: [], outgoing: [] };
     return {
@@ -302,10 +327,38 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       const id = nodeId ?? selected?.id;
       const node = sync.nodes.find((item) => item.id === id);
       if (!node || node.type !== "infra") return;
+      const data = node.data as InfraNodeData;
       const result = await openOrCreateInnerDiagram(props.diagramId, node.id);
+      if (
+        !sync.readOnly &&
+        (data.childDiagramId !== result.diagramId || data.childCount !== result.nodeCount)
+      ) {
+        sync.updateNode(node.id, {
+          ...data,
+          childDiagramId: result.diagramId,
+          childCount: result.nodeCount,
+        });
+      }
+      await sync.flushPersistence();
       router.push(`/editor/${props.projectId}/${result.diagramId}`);
     },
-    [props.diagramId, props.projectId, router, selected?.id, sync.nodes],
+    [
+      props.diagramId,
+      props.projectId,
+      router,
+      selected?.id,
+      sync.nodes,
+      sync.readOnly,
+      sync.updateNode,
+      sync.flushPersistence,
+    ],
+  );
+
+  const leaveTo = useCallback(
+    (href: string) => {
+      void sync.flushPersistence().then(() => router.push(href));
+    },
+    [router, sync.flushPersistence],
   );
 
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -318,10 +371,91 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     if (edgeIds.length) sync.deleteEdges(edgeIds);
   }, [sync]);
 
+  const clipboardRef = useRef<{ raw: string; pastes: number } | null>(null);
+
+  const copySelection = useCallback(() => {
+    const selected = new Set(sync.nodes.filter((node) => node.selected).map((node) => node.id));
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const node of sync.nodes) {
+        if (node.parentId && selected.has(node.parentId) && !selected.has(node.id)) {
+          selected.add(node.id);
+          grew = true;
+        }
+      }
+    }
+    const nodes = sync.nodes.filter((node) => selected.has(node.id));
+    if (!nodes.length) return false;
+    const edges = sync.edges.filter((edge) => selected.has(edge.source) && selected.has(edge.target));
+    const raw = `dataflow-graph:${JSON.stringify({
+      nodes: nodes.map((node) => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        parentId: node.parentId,
+        width: node.width,
+        height: node.height,
+        data: node.data,
+      })),
+      edges: edges.map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        label: edge.label,
+        data: edge.data,
+      })),
+    })}`;
+    clipboardRef.current = { raw, pastes: 0 };
+    void navigator.clipboard.writeText(raw).catch(() => undefined);
+    return true;
+  }, [sync.edges, sync.nodes]);
+
+  const pasteSelection = useCallback(() => {
+    if (sync.readOnly) return;
+    const apply = (raw: string) => {
+      if (!clipboardRef.current || clipboardRef.current.raw !== raw) clipboardRef.current = { raw, pastes: 0 };
+      clipboardRef.current.pastes += 1;
+      const step = 40 * clipboardRef.current.pastes;
+      const payload = JSON.parse(raw.slice("dataflow-graph:".length)) as {
+        nodes: Parameters<typeof sync.pasteGraph>[0];
+        edges: Parameters<typeof sync.pasteGraph>[1];
+      };
+      if (!payload.nodes?.length) return;
+      sync.pasteGraph(payload.nodes, payload.edges ?? [], { x: step, y: step });
+    };
+    const internal = clipboardRef.current?.raw;
+    void navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (text.startsWith("dataflow-graph:")) {
+          apply(text);
+          return;
+        }
+        if (internal) apply(internal);
+      })
+      .catch(() => {
+        if (internal) apply(internal);
+      });
+  }, [sync]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+        if (!copySelection()) return;
+        event.preventDefault();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+        if (sync.readOnly) return;
+        event.preventDefault();
+        pasteSelection();
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) sync.redo();
@@ -345,7 +479,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteSelection, groupSelection, sync.redo, sync.undo, ungroupSelection]);
+  }, [copySelection, deleteSelection, groupSelection, pasteSelection, sync.readOnly, sync.redo, sync.undo, ungroupSelection]);
 
   const onPointerMoveCanvas = useCallback(
     (event: MouseEvent) => {
@@ -410,6 +544,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             href={isPublic ? "/sign-in" : "/projects"}
             title={isPublic ? "Sign in" : "All projects"}
             className="mr-1 shrink-0 rounded-lg p-0.5 hover:bg-white/5"
+            onClick={(event) => {
+              if (isPublic) return;
+              event.preventDefault();
+              leaveTo("/projects");
+            }}
           >
             <Logo showName={false} className="gap-0" />
           </Link>
@@ -421,10 +560,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               onClick={() => {
                 if (props.trail.length > 1) {
                   const parent = props.trail[props.trail.length - 2];
-                  if (parent) router.push(`/editor/${props.projectId}/${parent.id}`);
+                  if (parent) leaveTo(`/editor/${props.projectId}/${parent.id}`);
                   return;
                 }
-                router.push("/projects");
+                leaveTo("/projects");
               }}
             >
               <ArrowLeft className="size-4" />
@@ -438,7 +577,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                   <button
                     type="button"
                     className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
-                    onClick={() => router.push(`/editor/${props.projectId}/${item.id}`)}
+                    onClick={() => leaveTo(`/editor/${props.projectId}/${item.id}`)}
                   >
                     {item.name}
                   </button>
@@ -477,6 +616,18 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               {sync.connected ? "Live" : "…"}
             </span>
           </div>
+          {!isPublic && !sync.readOnly ? (
+            <div className="flex items-center gap-2 pr-1 text-[11px] text-zinc-400" title="Allow your MCP token to read and edit this diagram">
+              MCP
+              <Switch
+                checked={mcpOn}
+                onCheckedChange={(value) => {
+                  setMcpOn(value);
+                  void setDiagramMcpEnabled(props.diagramId, value).catch(() => setMcpOn(!value));
+                }}
+              />
+            </div>
+          ) : null}
           {sync.mcpActive ? (
             <span
               title="MCP agent is editing this diagram"
@@ -963,6 +1114,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 onUngroup={ungroupSelection}
                 onClose={() => setRightOpen(false)}
                 readOnly={sync.readOnly}
+                groupChildren={groupChildren}
+                onConnectorsChange={(connectors) => selected && sync.setNodeConnectors(selected.id, connectors)}
               />
             )}
           </aside>

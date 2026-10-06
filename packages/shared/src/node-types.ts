@@ -91,6 +91,24 @@ export function normalizeNodeProperties(
   );
 }
 
+export type ConnectorDirection = "in" | "out";
+
+export interface NodeConnector {
+  nodeId: string;
+  title: string;
+  direction: ConnectorDirection;
+}
+
+export function connectorHandleId(direction: ConnectorDirection, nodeId: string) {
+  return `${direction}:${nodeId}`;
+}
+
+export function parseConnectorHandle(handle: string | null | undefined) {
+  const match = handle?.match(/^(in|out):(.+)$/);
+  if (!match) return null;
+  return { direction: match[1] as ConnectorDirection, nodeId: match[2]! };
+}
+
 export interface InfraNodeData {
   kind: "infra";
   title: string;
@@ -108,6 +126,7 @@ export interface InfraNodeData {
   technologies?: string[];
   childDiagramId?: string | null;
   childCount?: number;
+  connectors?: NodeConnector[];
   [key: string]: unknown;
 }
 
@@ -117,6 +136,7 @@ export interface GroupNodeData {
   subtitle?: string;
   tags: string[];
   childCount?: number;
+  connectors?: NodeConnector[];
   [key: string]: unknown;
 }
 

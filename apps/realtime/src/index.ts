@@ -2,7 +2,7 @@ import { Server } from "@hocuspocus/server";
 import { eq } from "drizzle-orm";
 import { jwtVerify } from "jose";
 import * as Y from "yjs";
-import { snapshotFromDoc, type MemberRole } from "@dataflow/shared";
+import { getNodeMap, snapshotFromDoc, type DiagramSnapshot, type MemberRole } from "@dataflow/shared";
 import { db, diagrams, projects } from "@dataflow/db";
 import { startMcp } from "./mcp";
 
@@ -11,6 +11,34 @@ type AuthContext = {
   role: MemberRole | "public";
   diagramId: string;
 };
+
+function keepChildLinks(document: Y.Doc, previous: DiagramSnapshot | null | undefined) {
+  if (!previous) return;
+  const links = new Map<string, { childDiagramId: string; childCount?: number }>();
+  for (const node of previous.nodes) {
+    if (node.data.kind !== "infra" || !node.data.childDiagramId) continue;
+    links.set(node.id, {
+      childDiagramId: node.data.childDiagramId,
+      childCount: node.data.childCount,
+    });
+  }
+  if (!links.size) return;
+  const nodes = getNodeMap(document);
+  document.transact(() => {
+    for (const [id, link] of links) {
+      const node = nodes.get(id);
+      if (!node || node.data.kind !== "infra" || node.data.childDiagramId) continue;
+      nodes.set(id, {
+        ...node,
+        data: {
+          ...node.data,
+          childDiagramId: link.childDiagramId,
+          childCount: node.data.childCount ?? link.childCount ?? 0,
+        },
+      });
+    }
+  });
+}
 
 const secret = new TextEncoder().encode(process.env.REALTIME_SECRET ?? "dev-realtime-secret");
 const port = Number(process.env.REALTIME_PORT ?? 1234);
@@ -45,6 +73,12 @@ const server = new Server({
     }
   },
   async onStoreDocument({ documentName, document }) {
+    const [row] = await db
+      .select({ snapshot: diagrams.snapshot, projectId: diagrams.projectId })
+      .from(diagrams)
+      .where(eq(diagrams.id, documentName))
+      .limit(1);
+    if (row) keepChildLinks(document, row.snapshot);
     const update = Y.encodeStateAsUpdate(document);
     const snapshot = snapshotFromDoc(document);
     await db
@@ -55,10 +89,9 @@ const server = new Server({
         updatedAt: new Date(),
       })
       .where(eq(diagrams.id, documentName));
-    await db
-      .update(projects)
-      .set({ updatedAt: new Date() })
-      .where(eq(projects.id, (await db.select({ projectId: diagrams.projectId }).from(diagrams).where(eq(diagrams.id, documentName)).limit(1))[0]?.projectId ?? ""));
+    if (row?.projectId) {
+      await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, row.projectId));
+    }
   },
 });
 

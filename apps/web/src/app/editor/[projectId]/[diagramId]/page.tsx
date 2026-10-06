@@ -37,6 +37,7 @@ export default async function EditorPage({
       snapshot={snapshot}
       user={user}
       insideLabel={trail.diagram.parentDiagramId ? trail.diagram.name : undefined}
+      mcpEnabled={trail.diagram.mcpEnabled}
     />
   );
 }

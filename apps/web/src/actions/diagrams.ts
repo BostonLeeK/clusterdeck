@@ -65,6 +65,36 @@ export async function saveDiagramSnapshot(diagramId: string, snapshot: DiagramSn
     .where(eq(diagrams.id, diagramId));
 }
 
+function innerContentCount(snapshot: DiagramSnapshot) {
+  return snapshot.nodes.filter((node) => node.type !== "port").length;
+}
+
+function pickInnerDiagram<T extends { snapshot: DiagramSnapshot; createdAt: Date }>(rows: T[]) {
+  return rows.slice().sort((left, right) => {
+    const byContent = innerContentCount(right.snapshot) - innerContentCount(left.snapshot);
+    if (byContent !== 0) return byContent;
+    return left.createdAt.getTime() - right.createdAt.getTime();
+  })[0];
+}
+
+async function linkInnerDiagram(
+  diagramId: string,
+  snapshot: DiagramSnapshot,
+  nodeId: string,
+  childDiagramId: string,
+  childCount: number,
+) {
+  const nextSnapshot: DiagramSnapshot = {
+    ...snapshot,
+    nodes: snapshot.nodes.map((item) =>
+      item.id === nodeId && item.data.kind === "infra"
+        ? { ...item, data: { ...item.data, childDiagramId, childCount } }
+        : item,
+    ),
+  };
+  await db.update(diagrams).set({ snapshot: nextSnapshot }).where(eq(diagrams.id, diagramId));
+}
+
 export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string) {
   const user = await requireUser();
   const bundle = await getDiagramWithTrail(diagramId);
@@ -74,7 +104,19 @@ export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string
   const node = bundle.diagram.snapshot.nodes.find((item) => item.id === nodeId);
   if (!node || node.data.kind !== "infra") throw new Error("invalid node");
   const data = node.data as InfraNodeData;
-  if (data.childDiagramId) return { diagramId: data.childDiagramId };
+
+  const children = await db
+    .select()
+    .from(diagrams)
+    .where(and(eq(diagrams.parentDiagramId, diagramId), eq(diagrams.parentNodeId, nodeId)));
+  const chosen = pickInnerDiagram(children);
+  if (chosen) {
+    const nodeCount = innerContentCount(chosen.snapshot);
+    if (data.childDiagramId !== chosen.id) {
+      await linkInnerDiagram(diagramId, bundle.diagram.snapshot, nodeId, chosen.id, nodeCount);
+    }
+    return { diagramId: chosen.id, nodeCount };
+  }
 
   const [created] = await db
     .insert(diagrams)
@@ -87,16 +129,26 @@ export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string
     })
     .returning();
   if (!created) throw new Error("failed");
-  const nextSnapshot: DiagramSnapshot = {
-    ...bundle.diagram.snapshot,
-    nodes: bundle.diagram.snapshot.nodes.map((item) =>
-      item.id === nodeId && item.data.kind === "infra"
-        ? { ...item, data: { ...item.data, childDiagramId: created.id, childCount: 0 } }
-        : item,
-    ),
-  };
-  await db.update(diagrams).set({ snapshot: nextSnapshot }).where(eq(diagrams.id, diagramId));
-  return { diagramId: created.id };
+  await linkInnerDiagram(diagramId, bundle.diagram.snapshot, nodeId, created.id, 0);
+  return { diagramId: created.id, nodeCount: 0 };
+}
+
+export type InnerNodeOption = { id: string; title: string; kind: "infra" | "group" };
+
+function connectableNodes(snapshot: DiagramSnapshot): InnerNodeOption[] {
+  return snapshot.nodes.flatMap((node) => {
+    if (node.data.kind !== "infra" && node.data.kind !== "group") return [];
+    return [{ id: node.id, title: node.data.title || "Untitled", kind: node.data.kind }];
+  });
+}
+
+export async function listInnerNodes(childDiagramId: string): Promise<InnerNodeOption[]> {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(childDiagramId);
+  if (!bundle) return [];
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access) return [];
+  return connectableNodes(bundle.diagram.snapshot);
 }
 
 export async function importDiagramJson(diagramId: string, snapshot: DiagramSnapshot) {
