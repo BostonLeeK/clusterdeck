@@ -41,7 +41,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const session = await auth();
-  if (!session?.user?.id && (pathname.startsWith("/projects") || pathname.startsWith("/editor") || pathname === "/")) {
+  if (!session?.user?.id && (pathname.startsWith("/projects") || pathname.startsWith("/editor"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("callbackUrl", pathname);

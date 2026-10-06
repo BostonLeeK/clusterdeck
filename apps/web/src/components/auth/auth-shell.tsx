@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Box, Circle, Cylinder, Hexagon } from "lucide-react";
@@ -11,7 +12,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_45%,rgba(99,102,241,0.08),transparent_60%)]"
         />
-        <Logo size="xl" className="relative" />
+        <Link href="/" className="relative flex w-fit items-center rounded-xl hover:opacity-90">
+          <Logo size="xl" />
+        </Link>
         <AuthHeroGraph />
         <p className="relative max-w-md text-[40px] leading-[1.1] font-medium tracking-tight text-zinc-100">
           Map your infrastructure.
