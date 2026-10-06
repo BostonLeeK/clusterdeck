@@ -47,6 +47,7 @@ import { EdgeDetails } from "@/components/editor/edge-details";
 import { NodeDetails } from "@/components/editor/node-details";
 import { NodeLibrary } from "@/components/editor/node-library";
 import { Outline } from "@/components/editor/outline";
+import { CanvasSearch } from "@/components/editor/canvas-search";
 import { ShareDialog } from "@/components/editor/share-dialog";
 import {
   DiagramPerspectiveProvider,
@@ -110,6 +111,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
   const [leftOpen, setLeftOpen] = useState(!isPublic);
   const [rightOpen, setRightOpen] = useState(!isPublic);
+  const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
   const [pinnedTag, setPinnedTag] = useState<string | null>(null);
   const [tagMode, setTagMode] = useState<TagPerspectiveMode>("highlight");
@@ -283,6 +285,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
         id: crypto.randomUUID(),
         type: "note",
         position: nextPosition,
+        width: 240,
+        height: 120,
         data: {
           kind: "note",
           title: tone === "comment" ? "Comment" : "Text",
@@ -468,6 +472,16 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
         sync.redo();
         return;
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setNodeSearchOpen(true);
+        return;
+      }
+      if (event.key === "Escape" && nodeSearchOpen) {
+        event.preventDefault();
+        setNodeSearchOpen(false);
+        return;
+      }
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         deleteSelection();
@@ -480,7 +494,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [copySelection, deleteSelection, groupSelection, pasteSelection, sync.readOnly, sync.redo, sync.undo, ungroupSelection]);
+  }, [copySelection, deleteSelection, groupSelection, nodeSearchOpen, pasteSelection, sync.readOnly, sync.redo, sync.undo, ungroupSelection]);
 
   const onPointerMoveCanvas = useCallback(
     (event: MouseEvent) => {
@@ -640,6 +654,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <Bot className="size-4" />
             </span>
           ) : null}
+          <CanvasSearch
+            nodes={sync.nodes}
+            open={nodeSearchOpen}
+            onOpenChange={setNodeSearchOpen}
+            onSelect={(id) => selectNodeOnly(id, true)}
+          />
           {isPublic ? (
             <Button asChild size="sm" className="h-8 rounded-lg">
               <Link href="/sign-in">Sign in to edit</Link>

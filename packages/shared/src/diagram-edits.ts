@@ -1,20 +1,42 @@
 import {
   NODE_TYPE_IDS,
   createInfraNodeData,
+  emptyMeta,
+  normalizeNodeProperties,
+  type ConnectorDirection,
   type DiagramEdge,
+  type DiagramFlow,
+  type DiagramMeta,
   type DiagramNode,
   type DiagramNodeKind,
   type DiagramSnapshot,
   type EdgeDirection,
   type EdgeLineShape,
   type InfraNodeTypeId,
+  type NodeConnector,
   type NodeLifecycle,
+  type NodeProperty,
   type NodeScope,
   type NodeShape,
   type NodeStatus,
+  type TagDef,
 } from "./node-types";
 
 const TYPE_IDS = new Set<string>(NODE_TYPE_IDS);
+
+export type PropertyInput = {
+  id?: string;
+  key: string;
+  value: string;
+  icon?: string;
+  showOnCanvas?: boolean;
+};
+
+export type ConnectorInput = {
+  nodeId: string;
+  title: string;
+  direction: ConnectorDirection;
+};
 
 export interface NodeInput {
   id?: string;
@@ -34,6 +56,9 @@ export interface NodeInput {
   scope?: NodeScope;
   lifecycle?: NodeLifecycle;
   technologies?: string[];
+  accentColor?: string | null;
+  properties?: PropertyInput[];
+  connectors?: ConnectorInput[];
   body?: string;
   tone?: "text" | "comment";
   direction?: "in" | "out";
@@ -46,6 +71,8 @@ export interface EdgeInput {
   id?: string;
   source?: string;
   target?: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
   label?: string;
   reverseLabel?: string;
   animated?: boolean;
@@ -53,11 +80,17 @@ export interface EdgeInput {
   direction?: EdgeDirection;
 }
 
+export type MetaInput = {
+  tagDefs?: TagDef[];
+  flows?: DiagramFlow[];
+};
+
 export type DiagramEdits = {
   upsertNodes?: NodeInput[];
   deleteNodeIds?: string[];
   upsertEdges?: EdgeInput[];
   deleteEdgeIds?: string[];
+  meta?: MetaInput;
 };
 
 export type DiagramEditResult = {
@@ -66,11 +99,39 @@ export type DiagramEditResult = {
   deletedNodeIds: string[];
   upsertedEdgeIds: string[];
   deletedEdgeIds: string[];
+  metaUpdated: boolean;
 };
 
 function infraTypeId(value: string | undefined): InfraNodeTypeId {
   if (!value || !TYPE_IDS.has(value)) throw new Error(`unknown infra typeId "${value ?? ""}"`);
   return value as InfraNodeTypeId;
+}
+
+function normalizeConnectors(connectors: ConnectorInput[] | undefined): NodeConnector[] | undefined {
+  if (connectors === undefined) return undefined;
+  return connectors.map((item) => {
+    const nodeId = item.nodeId?.trim();
+    const title = item.title?.trim();
+    if (!nodeId) throw new Error("connector.nodeId is required");
+    if (!title) throw new Error("connector.title is required");
+    if (item.direction !== "in" && item.direction !== "out") {
+      throw new Error('connector.direction must be "in" or "out"');
+    }
+    return { nodeId, title, direction: item.direction };
+  });
+}
+
+function normalizeProperties(properties: PropertyInput[] | undefined): NodeProperty[] | undefined {
+  if (properties === undefined) return undefined;
+  return normalizeNodeProperties(
+    properties.map((property) => ({
+      id: property.id,
+      key: property.key,
+      value: property.value,
+      icon: property.icon,
+      showOnCanvas: property.showOnCanvas,
+    })),
+  );
 }
 
 function applyFrame(node: DiagramNode, input: NodeInput): DiagramNode {
@@ -94,6 +155,7 @@ function createNode(id: string, input: NodeInput): DiagramNode {
     width: input.width,
     height: input.height,
   };
+  const connectors = normalizeConnectors(input.connectors);
   if (kind === "infra") {
     return {
       ...frame,
@@ -109,6 +171,9 @@ function createNode(id: string, input: NodeInput): DiagramNode {
         scope: input.scope,
         lifecycle: input.lifecycle,
         technologies: input.technologies,
+        accentColor: input.accentColor ?? undefined,
+        properties: normalizeProperties(input.properties),
+        connectors,
       }),
     };
   }
@@ -123,6 +188,7 @@ function createNode(id: string, input: NodeInput): DiagramNode {
         subtitle: input.subtitle,
         description: input.description,
         tags: input.tags ?? [],
+        ...(connectors !== undefined ? { connectors } : {}),
       },
     };
   }
@@ -156,6 +222,8 @@ function createNode(id: string, input: NodeInput): DiagramNode {
 function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
   if (input.kind && input.kind !== existing.type) throw new Error(`cannot change kind of node ${existing.id}`);
   const next = applyFrame(existing, input);
+  const connectors = normalizeConnectors(input.connectors);
+  const properties = normalizeProperties(input.properties);
   if (existing.data.kind === "infra") {
     const typeId = input.typeId ? infraTypeId(input.typeId) : existing.data.typeId;
     next.data = {
@@ -171,7 +239,13 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
       ...(input.scope !== undefined ? { scope: input.scope } : {}),
       ...(input.lifecycle !== undefined ? { lifecycle: input.lifecycle } : {}),
       ...(input.technologies !== undefined ? { technologies: input.technologies } : {}),
+      ...(input.accentColor !== undefined
+        ? { accentColor: input.accentColor === null ? undefined : input.accentColor }
+        : {}),
+      ...(properties !== undefined ? { properties } : {}),
+      ...(connectors !== undefined ? { connectors } : {}),
     };
+    if (input.accentColor === null) delete (next.data as { accentColor?: string }).accentColor;
     return next;
   }
   if (existing.data.kind === "group") {
@@ -181,6 +255,7 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
       ...(input.subtitle !== undefined ? { subtitle: input.subtitle } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.tags !== undefined ? { tags: input.tags } : {}),
+      ...(connectors !== undefined ? { connectors } : {}),
     };
     return next;
   }
@@ -206,7 +281,7 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
 
 function upsertEdge(existing: DiagramEdge | undefined, input: EdgeInput, id: string): DiagramEdge {
   if (!existing && (!input.source || !input.target)) throw new Error("a new edge needs source and target");
-  return {
+  const edge: DiagramEdge = {
     id,
     source: input.source ?? existing?.source ?? "",
     target: input.target ?? existing?.target ?? "",
@@ -217,6 +292,25 @@ function upsertEdge(existing: DiagramEdge | undefined, input: EdgeInput, id: str
     reverseLabel: input.reverseLabel !== undefined ? input.reverseLabel : existing?.reverseLabel,
     sourceHandle: existing?.sourceHandle,
     targetHandle: existing?.targetHandle,
+  };
+  if (input.sourceHandle !== undefined) {
+    edge.sourceHandle = input.sourceHandle === null ? undefined : input.sourceHandle;
+  }
+  if (input.targetHandle !== undefined) {
+    edge.targetHandle = input.targetHandle === null ? undefined : input.targetHandle;
+  }
+  return edge;
+}
+
+function mergeMeta(current: DiagramMeta | undefined, input: MetaInput | undefined): { meta: DiagramMeta; metaUpdated: boolean } {
+  const base = current ?? emptyMeta();
+  if (!input) return { meta: base, metaUpdated: false };
+  return {
+    meta: {
+      tagDefs: input.tagDefs !== undefined ? input.tagDefs : base.tagDefs,
+      flows: input.flows !== undefined ? input.flows : base.flows,
+    },
+    metaUpdated: true,
   };
 }
 
@@ -262,15 +356,18 @@ export function applyEditsToSnapshot(snapshot: DiagramSnapshot, edits: DiagramEd
     if (!deletedEdgeIds.includes(id)) deletedEdgeIds.push(id);
   }
 
+  const { meta, metaUpdated } = mergeMeta(snapshot.meta, edits.meta);
+
   return {
     snapshot: {
       nodes: Array.from(stagedNodes.values()),
       edges: Array.from(stagedEdges.values()),
-      meta: snapshot.meta,
+      meta,
     },
     upsertedNodeIds,
     deletedNodeIds,
     upsertedEdgeIds,
     deletedEdgeIds,
+    metaUpdated,
   };
 }

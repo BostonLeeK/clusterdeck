@@ -387,7 +387,7 @@ export function useDiagramSync(opts: {
       if (readOnly) return;
       setNodes((current) => {
         const next = (applyNodeChanges(changes, current) as Node[]).map((node) => {
-          if (node.type !== "infra") return node;
+          if (node.type !== "infra" && node.type !== "note" && node.type !== "group") return node;
           const dimensionChange = changes.find(
             (change) => change.type === "dimensions" && change.id === node.id,
           );

@@ -508,18 +508,29 @@ export const NoteNode = memo(function NoteNode({ data, selected }: NodeProps) {
   return (
     <div
       className={cn(
-        "relative w-[240px] overflow-hidden rounded-xl border px-3 py-2.5 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)]",
+        "relative box-border flex h-full min-h-[88px] min-w-[180px] flex-col overflow-hidden rounded-xl border px-3 py-2.5 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)]",
         comment ? "border-amber-500/35 bg-[#241c12]" : "border-[#2a2a2e] bg-[#141416]",
         selected && "ring-1 ring-indigo-400/40",
       )}
     >
+      <NodeResizer
+        minWidth={180}
+        minHeight={88}
+        isVisible={selected}
+        lineClassName={comment ? "border-amber-400/50" : "border-indigo-400/50"}
+        handleClassName={
+          comment
+            ? "!h-2 !w-2 !border-amber-400 !bg-[#241c12]"
+            : "!h-2 !w-2 !border-indigo-400 !bg-[#141416]"
+        }
+      />
       <div
         className={cn(
           "pointer-events-none absolute inset-y-2 left-0 w-[3px] rounded-full",
           comment ? "bg-amber-400/70" : "bg-zinc-500/70",
         )}
       />
-      <div className="flex items-center gap-1.5 pl-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 pl-1.5">
         {comment ? (
           <MessageSquare className="size-3.5 shrink-0 text-amber-300/80" />
         ) : (
@@ -535,7 +546,7 @@ export const NoteNode = memo(function NoteNode({ data, selected }: NodeProps) {
         </div>
       </div>
       {node.body?.trim() ? (
-        <div className="mt-1.5 max-h-[132px] overflow-hidden pl-1.5 text-[11px] leading-4 break-all whitespace-pre-wrap text-zinc-400">
+        <div className="mt-1.5 min-h-0 flex-1 overflow-auto pl-1.5 text-[11px] leading-4 break-words whitespace-pre-wrap text-zinc-400">
           {node.body}
         </div>
       ) : (

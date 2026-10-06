@@ -77,6 +77,11 @@ export function mergeInheritedPorts(
 }
 
 function resizableNodeLayout(node: DiagramNode) {
+  if (node.type === "note") {
+    const width = node.width ?? 240;
+    const height = node.height ?? 120;
+    return { style: { width, height }, width, height, zIndex: undefined };
+  }
   if (node.type === "infra" || node.type === "group") {
     const style = node.width || node.height ? { width: node.width, height: node.height } : undefined;
     return {
@@ -89,8 +94,8 @@ function resizableNodeLayout(node: DiagramNode) {
   return { style: undefined, width: undefined, height: undefined, zIndex: undefined };
 }
 
-export function normalizeFlowInfraNode(node: Node): Node {
-  if (node.type !== "infra") return node;
+export function normalizeFlowSizedNode(node: Node): Node {
+  if (node.type !== "infra" && node.type !== "note" && node.type !== "group") return node;
   const width =
     typeof node.width === "number"
       ? node.width
@@ -114,6 +119,10 @@ export function normalizeFlowInfraNode(node: Node): Node {
       ...(typeof height === "number" ? { height } : null),
     },
   };
+}
+
+export function normalizeFlowInfraNode(node: Node): Node {
+  return normalizeFlowSizedNode(node);
 }
 
 export function toFlowNodes(nodes: DiagramNode[]): Node[] {
@@ -191,7 +200,7 @@ export function fromFlowNode(node: {
   style?: { width?: number | string; height?: number | string };
   measured?: { width?: number; height?: number };
 }): DiagramNode {
-  const resizable = node.type === "group" || node.type === "infra";
+  const resizable = node.type === "group" || node.type === "infra" || node.type === "note";
   const width = resizable
     ? (node.width ?? (typeof node.style?.width === "number" ? node.style.width : undefined))
     : undefined;
@@ -206,7 +215,7 @@ export function fromFlowNode(node: {
     parentId: node.parentId,
     extent: node.parentId ? "parent" : undefined,
     width: resizable ? width : undefined,
-    height,
+    height: resizable ? height : undefined,
     data: node.data as DiagramNode["data"],
   };
 }

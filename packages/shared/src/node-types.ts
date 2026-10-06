@@ -423,6 +423,7 @@ export function createInfraNodeData(
     technologies: extra.technologies ?? [],
     childDiagramId: extra.childDiagramId,
     childCount: extra.childCount,
+    connectors: extra.connectors,
   };
 }
 

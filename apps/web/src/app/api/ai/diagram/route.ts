@@ -30,7 +30,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "update_diagram",
       description:
-        "Create, update, or delete nodes and edges. Prefer small focused edits. New nodes need position and typeId for infra.",
+        "Create, update, or delete nodes and edges; optional meta. Arrays you send (tags, technologies, properties, connectors, tagDefs, flows) replace previous values. properties: {key,value,icon?,showOnCanvas?} for canvas facts (OS, IP…). connectors: {nodeId,title,direction} publish inner nodes as parent handles. Edge handles: in:<id>/out:<id>.",
       parameters: {
         type: "object",
         properties: {
@@ -38,6 +38,14 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           deleteNodeIds: { type: "array", items: { type: "string" } },
           upsertEdges: { type: "array", items: { type: "object", additionalProperties: true } },
           deleteEdgeIds: { type: "array", items: { type: "string" } },
+          meta: {
+            type: "object",
+            properties: {
+              tagDefs: { type: "array", items: { type: "object", additionalProperties: true } },
+              flows: { type: "array", items: { type: "object", additionalProperties: true } },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },

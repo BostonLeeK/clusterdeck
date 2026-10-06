@@ -10,41 +10,101 @@ import { EDGE_DIRECTIONS, EDGE_LINE_SHAPES, diagramAgentInstructions, snapshotFr
 import { canEditProject, projectRole } from "./access";
 import { applyDiagramEdits, type EdgeInput, type NodeInput } from "./mcp-edit";
 
+const propertyInput = z.object({
+  id: z.string().optional().describe("Stable property id. Omit to create a new one."),
+  key: z.string().describe('Label, e.g. "OS", "IP", "Port", "Hostname".'),
+  value: z.string().describe('Value, e.g. "Windows", "Linux", "10.10.52.69".'),
+  icon: z.string().optional().describe('Optional Iconify id, e.g. "mdi:linux", "mdi:microsoft-windows".'),
+  showOnCanvas: z
+    .boolean()
+    .optional()
+    .describe("Show this row on the canvas card. Defaults to true."),
+});
+
+const connectorInput = z.object({
+  nodeId: z.string().describe("Id of a node inside the child diagram to publish on this parent."),
+  title: z.string().describe("Handle label on the parent (usually the inner node title)."),
+  direction: z.enum(["in", "out"]).describe("in = target side, out = source side."),
+});
+
 const nodeInput = z.object({
-  id: z.string().optional(),
-  kind: z.enum(["infra", "group", "note", "port"]).optional(),
-  position: z.object({ x: z.number(), y: z.number() }).optional(),
-  parentId: z.string().nullable().optional(),
+  id: z.string().optional().describe("Existing id to update, or omit to create."),
+  kind: z.enum(["infra", "group", "note", "port"]).optional().describe("Required conceptually for creates; defaults to infra."),
+  position: z.object({ x: z.number(), y: z.number() }).optional().describe("Required for new nodes."),
+  parentId: z.string().nullable().optional().describe("Group id, or null to detach from a group."),
   width: z.number().optional(),
   height: z.number().optional(),
   title: z.string().optional(),
-  typeId: z.string().optional(),
+  typeId: z.string().optional().describe("Infra catalog id (service, app, postgres, …). Required for new infra."),
   subtitle: z.string().optional(),
-  description: z.string().optional(),
-  displayDescription: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  description: z.string().optional().describe("Markdown description."),
+  displayDescription: z.string().optional().describe("Short caption on the canvas."),
+  tags: z.array(z.string()).optional().describe("Replaces the full tag list when sent."),
   status: z.enum(["healthy", "degraded", "unknown", "offline"]).optional(),
   shape: z.enum(["rounded", "rectangle", "cylinder", "hexagon", "actor", "stadium"]).optional(),
   scope: z.enum(["internal", "external"]).optional(),
   lifecycle: z.enum(["live", "future", "deprecated", "removed"]).optional(),
-  technologies: z.array(z.string()).optional(),
-  body: z.string().optional(),
+  technologies: z.array(z.string()).optional().describe("Tech catalog ids. Replaces the full list when sent."),
+  accentColor: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Hex from accent swatches, or null to reset."),
+  properties: z
+    .array(propertyInput)
+    .optional()
+    .describe("Canvas/inspector key-value facts. Replaces the full list when sent. Use [] to clear."),
+  connectors: z
+    .array(connectorInput)
+    .optional()
+    .describe(
+      "Publish inner child-diagram nodes as extra in/out handles on this parent. Replaces the full list when sent. Use [] to clear.",
+    ),
+  body: z.string().optional().describe("Note body."),
   tone: z.enum(["text", "comment"]).optional(),
-  direction: z.enum(["in", "out"]).optional(),
-  protocol: z.string().optional(),
-  parentNodeId: z.string().optional(),
-  parentEdgeId: z.string().optional(),
+  direction: z.enum(["in", "out"]).optional().describe("Port direction."),
+  protocol: z.string().optional().describe("Port protocol label."),
+  parentNodeId: z.string().optional().describe("Port parent node id."),
+  parentEdgeId: z.string().optional().describe("Port parent edge id."),
 });
 
 const edgeInput = z.object({
   id: z.string().optional(),
   source: z.string().optional(),
   target: z.string().optional(),
+  sourceHandle: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Default handle if omitted/null. Published connector: "out:<innerNodeId>".'),
+  targetHandle: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Default handle if omitted/null. Published connector: "in:<innerNodeId>".'),
   label: z.string().optional(),
-  reverseLabel: z.string().optional(),
+  reverseLabel: z.string().optional().describe("Label for reverse traffic when direction is both."),
   animated: z.boolean().optional(),
   lineShape: z.enum(EDGE_LINE_SHAPES).optional(),
-  direction: z.enum(EDGE_DIRECTIONS).optional(),
+  direction: z.enum(EDGE_DIRECTIONS).optional().describe("forward | backward | both."),
+});
+
+const tagDefInput = z.object({
+  id: z.string(),
+  label: z.string(),
+  color: z.string(),
+});
+
+const flowInput = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string(),
+  edgeIds: z.array(z.string()),
+});
+
+const metaInput = z.object({
+  tagDefs: z.array(tagDefInput).optional().describe("Replaces diagram tag definitions when sent."),
+  flows: z.array(flowInput).optional().describe("Replaces named flows when sent."),
 });
 
 async function userIdFromHeader(header: string | undefined) {
@@ -107,8 +167,11 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
   server.registerTool(
     "list_diagrams",
     {
-      description: "List diagrams this token is allowed to open, including inner diagrams. Access is off until someone enables the project. Use the returned id with get_diagram and update_diagram.",
-      inputSchema: z.object({ query: z.string().optional() }),
+      description:
+        "List diagrams this token may open (root and inner). Access is off until the project enables MCP. Use returned id with get_diagram / update_diagram. Optional query filters by diagram or project name.",
+      inputSchema: z.object({
+        query: z.string().optional().describe("Case-insensitive filter on diagram or project name."),
+      }),
     },
     async ({ query }) => {
       const needle = query?.trim().toLowerCase();
@@ -136,8 +199,11 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
   server.registerTool(
     "get_diagram",
     {
-      description: "Read one diagram, including nodes, edges, and meta.",
-      inputSchema: z.object({ diagramId: z.string() }),
+      description:
+        "Read one diagram snapshot: nodes (including properties, connectors, accentColor), edges (including handles and direction), and meta (tagDefs, flows). Always call before update_diagram when editing existing content.",
+      inputSchema: z.object({
+        diagramId: z.string().describe("Diagram id from list_diagrams."),
+      }),
     },
     async ({ diagramId }) => {
       try {
@@ -173,16 +239,23 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
   server.registerTool(
     "update_diagram",
     {
-      description: "Create, update, or delete nodes and edges on a diagram. Omitted fields on an existing id are kept. See the server instructions for type ids.",
+      description: [
+        "Create, update, or delete nodes and edges; optionally replace meta.tagDefs / meta.flows.",
+        "Omitted scalar fields on an existing id are kept. Arrays you send (tags, technologies, properties, connectors, tagDefs, flows) replace the previous value — use [] to clear.",
+        "properties: canvas facts like OS/IP ({ key, value, icon?, showOnCanvas? }).",
+        "connectors: publish inner-diagram nodes as parent in/out handles ({ nodeId, title, direction }). Edge handles become in:<nodeId> / out:<nodeId>.",
+        "See server instructions for full field docs, catalogs, and examples.",
+      ].join(" "),
       inputSchema: z.object({
         diagramId: z.string(),
         upsertNodes: z.array(nodeInput).optional(),
         deleteNodeIds: z.array(z.string()).optional(),
         upsertEdges: z.array(edgeInput).optional(),
         deleteEdgeIds: z.array(z.string()).optional(),
+        meta: metaInput.optional(),
       }),
     },
-    async ({ diagramId, upsertNodes, deleteNodeIds, upsertEdges, deleteEdgeIds }) => {
+    async ({ diagramId, upsertNodes, deleteNodeIds, upsertEdges, deleteEdgeIds, meta }) => {
       try {
         const [row] = await db
           .select({ projectId: diagrams.projectId, mcpEnabled: projects.mcpEnabled })
@@ -199,6 +272,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
             deleteNodeIds,
             upsertEdges: upsertEdges as EdgeInput[] | undefined,
             deleteEdgeIds,
+            meta,
           }),
         );
         return text(result);
