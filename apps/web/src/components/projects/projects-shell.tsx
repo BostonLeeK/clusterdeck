@@ -9,6 +9,7 @@ import {
   Folder,
   LayoutGrid,
   List,
+  Menu as MenuIcon,
   MoreHorizontal,
   Plus,
   Search,
@@ -16,6 +17,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { logout, updateProfileName } from "@/actions/auth";
 import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
@@ -84,6 +86,7 @@ export function ProjectsShell({
   const [profileOpen, setProfileOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
   const activeWorkspace = workspaces.find((item) => item.id === workspaceId) ?? workspaces[0];
 
   function setParam(key: string, value: string) {
@@ -101,19 +104,45 @@ export function ProjectsShell({
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4">
-        <div className="px-2 py-1">
+      {navOpen ? (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4 transition-transform md:sticky md:top-0 md:h-screen md:w-[240px] md:translate-x-0 ${
+          navOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between px-2 py-1">
           <Link href="/projects" className="inline-flex rounded-lg hover:opacity-90">
             <Logo />
           </Link>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-white md:hidden"
+            onClick={() => setNavOpen(false)}
+          >
+            <X className="size-4" />
+          </button>
         </div>
         <WorkspaceSwitcher
           workspaces={workspaces}
           activeWorkspaceId={filter === "team" ? workspaceId : undefined}
-          onSelect={selectWorkspace}
-          onSelectPersonal={() => router.push("/projects?filter=all")}
+          onSelect={(id) => {
+            setNavOpen(false);
+            selectWorkspace(id);
+          }}
+          onSelectPersonal={() => {
+            setNavOpen(false);
+            router.push("/projects?filter=all");
+          }}
         />
-        <nav className="space-y-0.5 text-[13px] text-zinc-400">
+        <nav className="space-y-0.5 text-[13px] text-zinc-400" onClick={() => setNavOpen(false)}>
           <Nav href="/projects?filter=all" active={filter === "all"} icon={<Folder className="size-4" />}>
             My projects
           </Nav>
@@ -207,8 +236,16 @@ export function ProjectsShell({
       <McpTokenDialog open={mcpOpen} onOpenChange={setMcpOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 px-6 pt-4 pb-2">
-          <div className="relative max-w-[560px] flex-1">
+        <header className="flex items-center gap-2 px-4 pt-4 pb-2 sm:gap-3 md:px-6">
+          <button
+            type="button"
+            aria-label="Open menu"
+            className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-zinc-400 hover:text-white md:hidden"
+            onClick={() => setNavOpen(true)}
+          >
+            <MenuIcon className="size-4" />
+          </button>
+          <div className="relative min-w-0 max-w-[560px] flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
             <Input
               defaultValue={params.get("q") ?? ""}
@@ -218,7 +255,7 @@ export function ProjectsShell({
                 if (event.key === "Enter") setParam("q", event.currentTarget.value);
               }}
             />
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-zinc-500">
+            <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded-md sm:block border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-zinc-500">
               ⌘K
             </kbd>
           </div>
@@ -234,18 +271,19 @@ export function ProjectsShell({
             ) : null}
             <CreateProjectButton
               workspaceId={filter === "team" ? workspaceId : undefined}
-              triggerClassName="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#6b74fb]"
+              triggerClassName="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-medium text-white hover:bg-[#6b74fb] sm:px-4"
             >
-              <Plus className="size-4" /> New project
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New project</span>
             </CreateProjectButton>
           </div>
         </header>
 
-        <main className="flex-1 px-8 pt-6 pb-10">
+        <main className="flex-1 px-4 pt-4 pb-10 md:px-8 md:pt-6">
           <p className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">
             {filter === "trash" ? "Trash" : filter === "templates" ? "Templates" : "Projects"}
           </p>
-          <h1 className="mt-1 text-[32px] leading-none font-semibold tracking-tight">
+          <h1 className="mt-1 truncate text-[26px] leading-none font-semibold tracking-tight md:text-[32px]">
             {filter === "team" && activeWorkspace
               ? activeWorkspace.name
               : filter === "trash"
@@ -269,7 +307,7 @@ export function ProjectsShell({
           </p>
 
           {filter !== "trash" && filter !== "templates" ? (
-          <div className="mt-6 mb-5 flex items-center justify-between">
+          <div className="mt-6 mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-1">
               {(["all", "personal", "shared"] as const).map((item) => (
                 <Link
@@ -493,9 +531,9 @@ function ProjectTile({ project, trashed }: { project: ProjectCard; trashed: bool
 
 function ProjectRow({ project, trashed }: { project: ProjectCard; trashed: boolean }) {
   return (
-    <article className="flex items-center gap-4 rounded-2xl border border-border bg-card p-2 pr-4 hover:border-zinc-700">
-      <Link href={projectHref(project)} className="flex min-w-0 flex-1 items-center gap-4">
-        <div className="w-44 shrink-0 overflow-hidden rounded-xl bg-surface">
+    <article className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2 pr-3 hover:border-zinc-700 sm:gap-4 sm:pr-4">
+      <Link href={projectHref(project)} className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+        <div className="hidden w-44 shrink-0 overflow-hidden rounded-xl bg-surface sm:block">
           <DiagramPreview snapshot={project.snapshot} className="h-[72px]" />
         </div>
         <div className="min-w-0 flex-1">
@@ -510,7 +548,9 @@ function ProjectRow({ project, trashed }: { project: ProjectCard; trashed: boole
         </div>
       </Link>
       <div className="flex shrink-0 items-center gap-4 text-[11px] text-zinc-500">
-        <ProjectMembers members={project.members} />
+        <div className="hidden sm:block">
+          <ProjectMembers members={project.members} />
+        </div>
         <ProjectActions project={project} trashed={trashed} />
       </div>
     </article>

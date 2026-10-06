@@ -92,7 +92,7 @@ export function ShareDialog({
       <ModalContent title="Share project" description="Invite people to collaborate on this project.">
         <div className="mb-2 text-sm">Invite by email</div>
         <form
-          className="mb-5 flex gap-2"
+          className="mb-5 flex flex-wrap gap-2 sm:flex-nowrap"
           onSubmit={async (event) => {
             event.preventDefault();
             if (!email.trim() || sending) return;
@@ -113,11 +113,16 @@ export function ShareDialog({
             }
           }}
         >
-          <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" />
+          <Input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@company.com"
+            className="min-w-0 basis-full sm:basis-auto"
+          />
           <FormSelect
             value={role}
             onValueChange={(next) => setRole(next as MemberRole)}
-            className="w-[120px] shrink-0"
+            className="min-w-[110px] flex-1 sm:w-[120px] sm:flex-none"
             options={[
               { value: "editor", label: "Editor" },
               { value: "viewer", label: "Viewer" },

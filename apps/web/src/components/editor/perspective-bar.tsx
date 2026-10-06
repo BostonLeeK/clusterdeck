@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Eye, EyeOff, Focus, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Focus, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import type { ChatMessage, DiagramEdits, DiagramFlow, DiagramSnapshot, TagDef } from "@dataflow/shared";
 import { Avatar } from "@/components/ui/avatar";
 import { OpenAiKeySettings } from "@/components/projects/openai-key-settings";
@@ -11,10 +11,14 @@ import { useAiDiagramChat } from "@/hooks/use-ai-diagram-chat";
 import { cn } from "@/lib/utils";
 import type { TagPerspectiveMode } from "@/components/editor/diagram-perspective";
 
+type PerspectiveTab = "tags" | "flows" | "chat" | "ai";
+
 export function PerspectiveBar({
   diagramId,
   getSnapshot,
   applyAiEdits,
+  open,
+  onOpenChange,
   tagDefs,
   flows,
   chat,
@@ -35,6 +39,8 @@ export function PerspectiveBar({
   diagramId: string;
   getSnapshot: () => DiagramSnapshot;
   applyAiEdits: (edits: DiagramEdits) => unknown;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   tagDefs: TagDef[];
   flows: DiagramFlow[];
   chat: ChatMessage[];
@@ -52,7 +58,7 @@ export function PerspectiveBar({
   onRenameFlow: (id: string, name: string) => void;
   onSendChat: (text: string) => void;
 }) {
-  const [tab, setTab] = useState<"tags" | "flows" | "chat" | "ai">("tags");
+  const [tab, setTab] = useState<PerspectiveTab>("tags");
   const [draft, setDraft] = useState("");
   const [aiDraft, setAiDraft] = useState("");
   const [keyOpen, setKeyOpen] = useState(false);
@@ -66,45 +72,54 @@ export function PerspectiveBar({
   });
 
   useEffect(() => {
-    if (tab !== "chat") return;
+    if (!open || tab !== "chat") return;
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, tab]);
+  }, [chat, tab, open]);
 
   useEffect(() => {
-    if (tab !== "ai") return;
+    if (!open || tab !== "ai") return;
     aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [ai.messages, tab, ai.pending]);
+  }, [ai.messages, tab, ai.pending, open]);
+
+  function selectTab(next: PerspectiveTab) {
+    if (open && next === tab) {
+      onOpenChange(false);
+      return;
+    }
+    setTab(next);
+    onOpenChange(true);
+  }
 
   return (
-    <div className="absolute bottom-14 left-1/2 z-20 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 shadow-2xl backdrop-blur">
-      <div className="flex items-center gap-1 border-b border-[#2a2a2e] px-2 py-1.5">
-        <TabButton active={tab === "tags"} onClick={() => setTab("tags")}>
+    <div className="absolute bottom-14 left-1/2 z-20 w-[min(720px,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 shadow-2xl backdrop-blur">
+      <div className={cn("flex items-center gap-1 px-2 py-1.5", open && "border-b border-[#2a2a2e]")}>
+        <TabButton active={open && tab === "tags"} onClick={() => selectTab("tags")}>
           Tags
         </TabButton>
-        <TabButton active={tab === "flows"} onClick={() => setTab("flows")}>
+        <TabButton active={open && tab === "flows"} onClick={() => selectTab("flows")}>
           Flows
         </TabButton>
-        <TabButton active={tab === "chat"} onClick={() => setTab("chat")}>
+        <TabButton active={open && tab === "chat"} onClick={() => selectTab("chat")}>
           {chat.length ? `Chat · ${chat.length}` : "Chat"}
         </TabButton>
-        <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>
+        <TabButton active={open && tab === "ai"} onClick={() => selectTab("ai")}>
           AI
         </TabButton>
-        {tab === "tags" ? (
-          <div className="ml-auto flex items-center gap-0.5">
-            <ModeButton active={tagMode === "highlight"} title="Highlight" onClick={() => onTagMode("highlight")}>
-              <Eye className="size-3.5" />
-            </ModeButton>
-            <ModeButton active={tagMode === "focus"} title="Focus" onClick={() => onTagMode("focus")}>
-              <Focus className="size-3.5" />
-            </ModeButton>
-            <ModeButton active={tagMode === "hide"} title="Hide others" onClick={() => onTagMode("hide")}>
-              <EyeOff className="size-3.5" />
-            </ModeButton>
-          </div>
-        ) : tab === "flows" ? (
-          <div className="ml-auto">
-            {!readOnly ? (
+        <div className="ml-auto flex min-w-0 items-center gap-1">
+          {!open ? null : tab === "tags" ? (
+            <div className="flex items-center gap-0.5">
+              <ModeButton active={tagMode === "highlight"} title="Highlight" onClick={() => onTagMode("highlight")}>
+                <Eye className="size-3.5" />
+              </ModeButton>
+              <ModeButton active={tagMode === "focus"} title="Focus" onClick={() => onTagMode("focus")}>
+                <Focus className="size-3.5" />
+              </ModeButton>
+              <ModeButton active={tagMode === "hide"} title="Hide others" onClick={() => onTagMode("hide")}>
+                <EyeOff className="size-3.5" />
+              </ModeButton>
+            </div>
+          ) : tab === "flows" ? (
+            !readOnly ? (
               <button
                 type="button"
                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-white"
@@ -112,37 +127,45 @@ export function PerspectiveBar({
               >
                 <Plus className="size-3.5" /> New flow
               </button>
-            ) : null}
-          </div>
-        ) : tab === "ai" ? (
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded-lg px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-              onClick={() => {
-                setKeyOpen((open) => !open);
-                void ai.refreshKeyStatus();
-              }}
-            >
-              {ai.configured ? "API key" : "Add key"}
-            </button>
-            {ai.messages.length ? (
+            ) : null
+          ) : tab === "ai" ? (
+            <>
               <button
                 type="button"
-                title="Clear AI thread"
-                className="grid size-7 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-                onClick={ai.clearThread}
+                className="rounded-lg px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                onClick={() => {
+                  setKeyOpen((value) => !value);
+                  void ai.refreshKeyStatus();
+                }}
               >
-                <Trash2 className="size-3.5" />
+                {ai.configured ? "API key" : "Add key"}
               </button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="ml-auto text-[11px] text-zinc-500">Live for everyone in this diagram</div>
-        )}
+              {ai.messages.length ? (
+                <button
+                  type="button"
+                  title="Clear AI thread"
+                  className="grid size-7 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                  onClick={ai.clearThread}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <div className="hidden truncate text-[11px] text-zinc-500 sm:block">Live for everyone in this diagram</div>
+          )}
+          <button
+            type="button"
+            title={open ? "Collapse" : "Expand"}
+            className="grid size-7 shrink-0 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            onClick={() => onOpenChange(!open)}
+          >
+            {open ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+          </button>
+        </div>
       </div>
 
-      {tab === "chat" ? (
+      {!open ? null : tab === "chat" ? (
         <div className="flex h-52 flex-col">
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2.5">
             {chat.length === 0 ? (

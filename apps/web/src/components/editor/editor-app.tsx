@@ -65,6 +65,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
+import { useIsMobile } from "@/hooks/use-media-query";
 import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
 
@@ -109,8 +110,13 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [tool, setTool] = useState<"select" | "pan">(isPublic ? "pan" : "select");
   const [zoom, setZoom] = useState(1);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
-  const [leftOpen, setLeftOpen] = useState(!isPublic);
-  const [rightOpen, setRightOpen] = useState(!isPublic);
+  const isMobile = useIsMobile();
+  const [leftPanel, setLeftPanel] = useState<boolean | null>(null);
+  const [rightPanel, setRightPanel] = useState<boolean | null>(null);
+  const [barPanel, setBarPanel] = useState<boolean | null>(null);
+  const leftOpen = !isPublic && (leftPanel ?? !isMobile);
+  const rightOpen = !isPublic && (rightPanel ?? !isMobile);
+  const barOpen = barPanel ?? !isMobile;
   const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
   const [pinnedTag, setPinnedTag] = useState<string | null>(null);
@@ -118,6 +124,20 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [presenceUser, setPresenceUser] = useState(props.user);
   const [mcpOn, setMcpOn] = useState(Boolean(props.mcpEnabled));
+
+  function setLeftOpen(open: boolean) {
+    setLeftPanel(open);
+    if (open && isMobile) setRightPanel(false);
+  }
+
+  function setRightOpen(open: boolean) {
+    setRightPanel(open);
+    if (open && isMobile) setLeftPanel(false);
+  }
+
+  function revealDetails() {
+    if (!isMobile) setRightPanel(true);
+  }
 
   useEffect(() => {
     if (!isGuestUser(props.user)) {
@@ -552,8 +572,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-[#0b0b0d]">
-      <header className="flex h-12 items-center justify-between border-b border-[#1e1e22] px-4">
+    <div className="flex h-dvh flex-col bg-[#0b0b0d]">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[#1e1e22] px-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-1 text-[13px] text-zinc-500">
           <Link
             href={isPublic ? "/sign-in" : "/projects"}
@@ -584,11 +604,20 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <ArrowLeft className="size-4" />
             </button>
           ) : null}
-          <span className="shrink-0 truncate text-zinc-200">{props.projectName}</span>
+          <span
+            className={`min-w-0 truncate text-zinc-200 sm:shrink-0 ${
+              !isPublic && props.trail.length > 1 ? "hidden sm:inline" : ""
+            }`}
+          >
+            {props.projectName}
+          </span>
           {!isPublic
             ? props.trail.slice(1).map((item, index, items) => (
-                <span key={item.id} className="flex min-w-0 items-center">
-                  <span className="mx-1.5 shrink-0 text-zinc-600">›</span>
+                <span
+                  key={item.id}
+                  className={`min-w-0 items-center ${index === items.length - 1 ? "flex" : "hidden sm:flex"}`}
+                >
+                  <span className="mx-1.5 hidden shrink-0 text-zinc-600 sm:inline">›</span>
                   <button
                     type="button"
                     className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
@@ -601,10 +630,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             : null}
           {isPublic ? <span className="ml-2 shrink-0 text-xs text-zinc-500">View only</span> : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <div className="flex items-center gap-2 pr-1">
             {presenceUsers.length ? (
-              <div className="flex items-center -space-x-1.5">
+              <div className="hidden items-center -space-x-1.5 sm:flex">
                 {presenceUsers.map((user) => (
                   <span
                     key={user.clientId}
@@ -633,7 +662,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           </div>
           {!isPublic && !sync.readOnly ? (
             <div
-              className="flex items-center gap-2 pr-1 text-[11px] text-zinc-400"
+              className="hidden items-center gap-2 pr-1 text-[11px] text-zinc-400 md:flex"
               title="Allow your MCP token to read and edit this project, including inner diagrams"
             >
               MCP
@@ -666,7 +695,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </Button>
           ) : (
             <>
-              <HistoryMenu diagramId={props.diagramId} readOnly={sync.readOnly} onRestore={sync.restore} />
+              <div className="hidden sm:contents">
+                <HistoryMenu diagramId={props.diagramId} readOnly={sync.readOnly} onRestore={sync.restore} />
+              </div>
               <ShareDialog
                 projectId={props.projectId}
                 shareToken={props.shareToken}
@@ -676,11 +707,13 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 currentUserId={props.user.id ?? undefined}
                 canManage={sync.role === "owner" || props.user.id === props.ownerId}
               />
-              <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
+              <div className="hidden sm:contents">
+                <ExportMenu diagramId={props.diagramId} getSnapshot={sync.snapshot} onImport={sync.replaceSnapshot} />
+              </div>
               <button
                 type="button"
                 title="Undo (Ctrl+Z)"
-                className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5"
+                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 sm:grid"
                 onClick={sync.undo}
               >
                 <Undo2 className="size-4" />
@@ -688,7 +721,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <button
                 type="button"
                 title="Redo (Ctrl+Shift+Z)"
-                className="grid size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5"
+                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 sm:grid"
                 onClick={sync.redo}
               >
                 <Redo2 className="size-4" />
@@ -698,14 +731,21 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        {!isPublic && leftOpen ? (
-          <aside className="flex w-[260px] shrink-0 flex-col border-r border-[#1e1e22] bg-[#0b0b0d]">
-            <NodeLibrary onAdd={(typeId) => createNode(typeId)} onCollapse={() => setLeftOpen(false)} />
+        {leftOpen ? (
+          <aside className="flex w-[260px] shrink-0 flex-col border-r border-[#1e1e22] bg-[#0b0b0d] max-md:fixed max-md:inset-x-0 max-md:top-12 max-md:bottom-0 max-md:z-40 max-md:w-full max-md:border-r-0">
+            <NodeLibrary
+              onAdd={(typeId) => {
+                createNode(typeId);
+                if (isMobile) setLeftOpen(false);
+              }}
+              onCollapse={() => setLeftOpen(false)}
+            />
             <Outline
               nodes={sync.nodes}
               selectedId={selected?.id}
               onSelect={(id) => {
-                setRightOpen(true);
+                if (isMobile) setLeftOpen(false);
+                revealDetails();
                 selectNodeOnly(id, true);
               }}
             />
@@ -740,6 +780,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
               <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
               <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
+              <div className="contents sm:hidden">
+                <span className="mx-1.5 my-0.5 h-px bg-[#2a2a2e]" />
+                <Tool title="Undo" icon={<Undo2 className="size-4" />} onClick={sync.undo} />
+                <Tool title="Redo" icon={<Redo2 className="size-4" />} onClick={sync.redo} />
+              </div>
             </div>
           ) : null}
           {props.insideLabel && !isPublic ? (
@@ -760,7 +805,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               onNodeClick={(event, node) => {
                 if (isPublic) return;
                 setMenu(null);
-                setRightOpen(true);
+                revealDetails();
                 if (event.shiftKey) {
                   setNodes((current) =>
                     current.map((item) => (item.id === node.id ? { ...item, selected: !item.selected } : item)),
@@ -791,7 +836,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               onEdgeClick={(_, edge) => {
                 if (isPublic) return;
                 setMenu(null);
-                setRightOpen(true);
+                revealDetails();
                 selectEdgeOnly(edge.id);
               }}
               onPaneClick={() => {
@@ -852,8 +897,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               fitView
               minZoom={0.01}
               maxZoom={4}
-              panOnDrag={isPublic || tool === "pan" ? true : [1]}
-              selectionOnDrag={!isPublic && tool === "select"}
+              panOnDrag={isPublic || isMobile || tool === "pan" ? true : [1]}
+              selectionOnDrag={!isPublic && !isMobile && tool === "select"}
               selectNodesOnDrag={false}
               selectionKeyCode={isPublic ? null : "Shift"}
               multiSelectionKeyCode={isPublic ? null : "Shift"}
@@ -867,16 +912,18 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               defaultEdgeOptions={{ type: "labeled", style: { stroke: "#52525b", strokeWidth: 1.4 } }}
             >
               <Background variant={BackgroundVariant.Dots} gap={20} size={1.1} color="#2a2a2e" />
-              <MiniMap
-                pannable
-                zoomable
-                position="bottom-right"
-                style={{ marginRight: 12, marginBottom: 48 }}
-                maskColor="rgba(0, 0, 0, 0.6)"
-                nodeStrokeColor="#3f3f46"
-                nodeColor="#27272a"
-                nodeStrokeWidth={1}
-              />
+              {isMobile ? null : (
+                <MiniMap
+                  pannable
+                  zoomable
+                  position="bottom-right"
+                  style={{ marginRight: 12, marginBottom: 48 }}
+                  maskColor="rgba(0, 0, 0, 0.6)"
+                  nodeStrokeColor="#3f3f46"
+                  nodeColor="#27272a"
+                  nodeStrokeWidth={1}
+                />
+              )}
             </ReactFlow>
             <RemoteCursors users={remoteCursorUsers} />
             </div>
@@ -886,6 +933,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               diagramId={props.diagramId}
               getSnapshot={sync.snapshot}
               applyAiEdits={sync.applyAiEdits}
+              open={barOpen}
+              onOpenChange={setBarPanel}
               tagDefs={tagDefs}
               flows={sync.meta.flows}
               chat={sync.chat}
@@ -1094,7 +1143,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             ) : null}
           </CanvasContextMenu>
           ) : null}
-          <div className="absolute bottom-4 left-4 flex items-center gap-2 text-xs text-zinc-500">
+          <div className="absolute bottom-4 left-4 hidden items-center gap-2 text-xs text-zinc-500 sm:flex">
             {isPublic ? (
               <>
                 <span className="size-1.5 rounded-full bg-sky-400" />
@@ -1122,12 +1171,13 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <Plus className="size-3.5" />
             </button>
             <button className="px-2 hover:text-white" onClick={() => fitView()}>
-              Fit to screen
+              <span className="sm:hidden">Fit</span>
+              <span className="hidden sm:inline">Fit to screen</span>
             </button>
           </div>
         </div>
-        {!isPublic && rightOpen ? (
-          <aside className="w-[420px] shrink-0 border-l border-[#1e1e22] bg-[#0b0b0d]">
+        {rightOpen ? (
+          <aside className="w-[420px] shrink-0 border-l border-[#1e1e22] bg-[#0b0b0d] max-md:fixed max-md:inset-x-0 max-md:top-12 max-md:bottom-0 max-md:z-40 max-md:w-full max-md:overflow-y-auto max-md:border-l-0">
             {selectedEdge && !selected ? (
               <EdgeDetails
                 edge={selectedEdge}
@@ -1217,9 +1267,21 @@ function RemoteCursors({
   );
 }
 
-function Tool({ icon, onClick, active }: { icon: ReactNode; onClick?: () => void; active?: boolean }) {
+function Tool({
+  icon,
+  onClick,
+  active,
+  title,
+}: {
+  icon: ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+  title?: string;
+}) {
   return (
     <button
+      type="button"
+      title={title}
       className={`grid size-8 place-items-center rounded-xl hover:bg-white/5 hover:text-white ${
         active ? "bg-white/10 text-white" : "text-zinc-400"
       }`}

@@ -16,7 +16,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           Together.
         </p>
       </div>
-      <div className="flex items-center justify-center border-l border-[#1e1e22] p-8">
+      <div className="flex items-center justify-center p-5 sm:p-8 lg:border-l lg:border-[#1e1e22]">
         <div className="w-full max-w-[380px]">{children}</div>
       </div>
     </div>
