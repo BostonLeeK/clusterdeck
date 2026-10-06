@@ -713,7 +713,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <button
                 type="button"
                 title="Undo (Ctrl+Z)"
-                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 sm:grid"
+                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 md:grid"
                 onClick={sync.undo}
               >
                 <Undo2 className="size-4" />
@@ -721,7 +721,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <button
                 type="button"
                 title="Redo (Ctrl+Shift+Z)"
-                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 sm:grid"
+                className="hidden size-8 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 md:grid"
                 onClick={sync.redo}
               >
                 <Redo2 className="size-4" />
@@ -756,7 +756,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             <button
               type="button"
               title="Open left panel"
-              className="absolute top-3 left-14 z-10 grid size-9 place-items-center rounded-xl border border-[#2a2a2e] bg-[#141416]/95 text-zinc-400 hover:bg-white/5 hover:text-white"
+              className="absolute top-3 left-3 z-10 grid size-9 place-items-center rounded-xl border border-[#2a2a2e] bg-[#141416]/95 text-zinc-400 hover:bg-white/5 hover:text-white md:left-14"
               onClick={() => setLeftOpen(true)}
             >
               <PanelLeftOpen className="size-4" />
@@ -773,22 +773,28 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             </button>
           ) : null}
           {!isPublic ? (
-            <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
-              <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
-              <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
-              <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
-              <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
-              <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
-              <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
-              <div className="contents sm:hidden">
-                <span className="mx-1.5 my-0.5 h-px bg-[#2a2a2e]" />
+            isMobile ? (
+              <div className="absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-0.5">
+                <Tool title="Add node" icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
+                <Tool title="Text" icon={<Type className="size-4" />} onClick={() => addNote("text")} />
+                <Tool title="Comment" icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
+                <span className="mx-0.5 h-5 w-px bg-[#2a2a2e]" />
                 <Tool title="Undo" icon={<Undo2 className="size-4" />} onClick={sync.undo} />
                 <Tool title="Redo" icon={<Redo2 className="size-4" />} onClick={sync.redo} />
               </div>
-            </div>
+            ) : (
+              <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
+                <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
+                <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
+                <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
+                <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
+                <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
+                <Tool icon={<MessageSquare className="size-4" />} onClick={() => addNote("comment")} />
+              </div>
+            )
           ) : null}
           {props.insideLabel && !isPublic ? (
-            <div className="absolute top-3 left-16 z-10 inline-flex items-center gap-2 rounded-full border border-[#2a2a2e] bg-[#141416] px-3 py-1 text-xs text-zinc-300">
+            <div className="absolute top-3 left-16 z-10 inline-flex items-center gap-2 rounded-full border border-[#2a2a2e] bg-[#141416] px-3 py-1 text-xs text-zinc-300 max-md:top-14 max-md:left-3">
               Inside: {props.insideLabel}
             </div>
           ) : null}
@@ -902,9 +908,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               selectNodesOnDrag={false}
               selectionKeyCode={isPublic ? null : "Shift"}
               multiSelectionKeyCode={isPublic ? null : "Shift"}
-              nodesDraggable={!sync.readOnly && !isPublic && tool === "select"}
+              nodesDraggable={!sync.readOnly && !isPublic && (isMobile || tool === "select")}
               nodesConnectable={!sync.readOnly && !isPublic}
-              elementsSelectable={!isPublic && tool === "select"}
+              elementsSelectable={!isPublic && (isMobile || tool === "select")}
               onMoveEnd={() => setZoom(getZoom())}
               onInit={(instance) => setZoom(instance.getZoom())}
               proOptions={{ hideAttribution: true }}
@@ -1162,11 +1168,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               </>
             )}
           </div>
-          <div className="absolute right-4 bottom-4 z-10 flex items-center gap-1 rounded-xl border border-[#2a2a2e] bg-[#141416] px-1 py-1 text-xs text-zinc-400">
+          <div className="absolute right-3 bottom-4 z-10 flex items-center gap-1 rounded-xl sm:right-4 border border-[#2a2a2e] bg-[#141416] px-1 py-1 text-xs text-zinc-400">
             <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => void zoomOut()}>
               <Minus className="size-3.5" />
             </button>
-            <span className="px-1">{Math.round(zoom * 100)}%</span>
+            <span className="hidden px-1 sm:inline">{Math.round(zoom * 100)}%</span>
             <button className="grid size-7 place-items-center rounded-lg hover:bg-white/5" onClick={() => void zoomIn()}>
               <Plus className="size-3.5" />
             </button>

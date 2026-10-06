@@ -91,8 +91,18 @@ export function PerspectiveBar({
   }
 
   return (
-    <div className="absolute bottom-14 left-1/2 z-20 w-[min(720px,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 shadow-2xl backdrop-blur">
-      <div className={cn("flex items-center gap-1 px-2 py-1.5", open && "border-b border-[#2a2a2e]")}>
+    <div
+      className={cn(
+        "absolute bottom-14 left-1/2 z-20 w-[min(720px,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 shadow-2xl backdrop-blur",
+        !open && "max-md:bottom-4 max-md:left-3 max-md:w-auto max-md:translate-x-0",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-1 px-2 py-1.5",
+          open ? "border-b border-[#2a2a2e]" : "max-md:gap-0.5 max-md:p-1",
+        )}
+      >
         <TabButton active={open && tab === "tags"} onClick={() => selectTab("tags")}>
           Tags
         </TabButton>
@@ -379,7 +389,7 @@ function TabButton({
     <button
       type="button"
       className={cn(
-        "rounded-lg px-2.5 py-1 text-[11px] font-medium",
+        "rounded-lg px-2 py-1 text-[11px] font-medium sm:px-2.5",
         active ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300",
       )}
       onClick={onClick}
