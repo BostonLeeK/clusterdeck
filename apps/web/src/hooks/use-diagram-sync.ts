@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import * as Y from "yjs";
 import {
+  applyEditsToSnapshot,
   applySnapshot,
   connectorHandleId,
   emptyMeta,
@@ -21,6 +22,7 @@ import {
   snapshotFromDoc,
   type ChatMessage,
   type DiagramEdge,
+  type DiagramEdits,
   type DiagramFlow,
   type DiagramMeta,
   type DiagramNode,
@@ -189,10 +191,20 @@ export function useDiagramSync(opts: {
   }, []);
 
   const writeSnapshot = useCallback(
-    (snapshot: DiagramSnapshot, record: boolean) => {
+    (snapshot: DiagramSnapshot, record: boolean, historyLabel?: string) => {
       dirtyRef.current = true;
       const doc = docRef.current;
-      if (record) recordHistory(opts.diagramId, snapshotFromDoc(doc), snapshot);
+      if (record) {
+        const before = snapshotFromDoc(doc);
+        recordHistory(
+          opts.diagramId,
+          before,
+          snapshot,
+          historyLabel
+            ? { label: historyLabel, group: `ai:${crypto.randomUUID()}` }
+            : undefined,
+        );
+      }
       applySnapshot(doc, snapshot, LOCAL_ORIGIN);
       setSaved(false);
       if (!providerRef.current) {
@@ -572,6 +584,30 @@ export function useDiagramSync(opts: {
     [persistLocal],
   );
 
+  const applyAiEdits = useCallback(
+    (edits: DiagramEdits) => {
+      if (readOnly) return null;
+      const before = {
+        nodes: flowNodesToDiagram(nodesRef.current),
+        edges: flowEdgesToDiagram(edgesRef.current),
+        meta: metaRef.current,
+      };
+      const result = applyEditsToSnapshot(before, edits);
+      const nextNodes = toFlowNodes(result.snapshot.nodes);
+      const nextEdges = toFlowEdges(result.snapshot.edges);
+      const nextMeta = result.snapshot.meta ?? emptyMeta();
+      nodesRef.current = nextNodes;
+      edgesRef.current = nextEdges;
+      metaRef.current = nextMeta;
+      setNodesState(nextNodes);
+      setEdgesState(nextEdges);
+      setMetaState(nextMeta);
+      writeSnapshot(result.snapshot, true, "AI: updated diagram");
+      return result;
+    },
+    [readOnly, writeSnapshot],
+  );
+
   const commitNodes = useCallback(
     (next: Node[]) => {
       if (readOnly) return;
@@ -875,6 +911,7 @@ export function useDiagramSync(opts: {
     removeFlow,
     toggleEdgeInFlow,
     replaceSnapshot,
+    applyAiEdits,
     commitNodes,
     setNodeConnectors,
     deleteNodes,

@@ -34,7 +34,6 @@ import type {
   InfraNodeData,
   InfraNodeTypeId,
   MemberRole,
-  TagDef,
 } from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
 import { openOrCreateInnerDiagram } from "@/actions/diagrams";
@@ -157,17 +156,22 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     return ids;
   }, [activeFlow, flowEdgeIds, sync.edges]);
   const tagDefs = useMemo(() => {
-    const map = new Map<string, TagDef>();
-    for (const def of sync.meta.tagDefs) map.set(def.label, def);
+    const used = new Set<string>();
     for (const node of sync.nodes) {
       const data = node.data as InfraNodeData;
       if (data.kind !== "infra") continue;
-      for (const tag of data.tags) {
-        if (!map.has(tag)) map.set(tag, { id: tag, label: tag, color: hashTagColor(tag) });
-      }
+      for (const tag of data.tags) used.add(tag);
     }
-    return Array.from(map.values());
+    const byLabel = new Map(sync.meta.tagDefs.map((def) => [def.label, def]));
+    return Array.from(used, (label) => byLabel.get(label) ?? { id: label, label, color: hashTagColor(label) });
   }, [sync.meta.tagDefs, sync.nodes]);
+
+  useEffect(() => {
+    if (pinnedTag && !tagDefs.some((tag) => tag.label === pinnedTag)) {
+      setPinnedTag(null);
+    }
+  }, [pinnedTag, tagDefs]);
+
   const perspectiveValue = useMemo(
     () => ({
       tagDefs,
@@ -859,6 +863,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           </DiagramPerspectiveProvider>
           {!isPublic ? (
             <PerspectiveBar
+              diagramId={props.diagramId}
+              getSnapshot={sync.snapshot}
+              applyAiEdits={sync.applyAiEdits}
               tagDefs={tagDefs}
               flows={sync.meta.flows}
               chat={sync.chat}

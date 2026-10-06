@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Eye, EyeOff, Focus, Plus, Send, X } from "lucide-react";
-import type { ChatMessage, DiagramFlow, TagDef } from "@dataflow/shared";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Eye, EyeOff, Focus, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import type { ChatMessage, DiagramEdits, DiagramFlow, DiagramSnapshot, TagDef } from "@dataflow/shared";
 import { Avatar } from "@/components/ui/avatar";
+import { OpenAiKeySettings } from "@/components/projects/openai-key-settings";
+import { useAiDiagramChat } from "@/hooks/use-ai-diagram-chat";
 import { cn } from "@/lib/utils";
 import type { TagPerspectiveMode } from "@/components/editor/diagram-perspective";
 
 export function PerspectiveBar({
+  diagramId,
+  getSnapshot,
+  applyAiEdits,
   tagDefs,
   flows,
   chat,
@@ -25,6 +32,9 @@ export function PerspectiveBar({
   onRenameFlow,
   onSendChat,
 }: {
+  diagramId: string;
+  getSnapshot: () => DiagramSnapshot;
+  applyAiEdits: (edits: DiagramEdits) => unknown;
   tagDefs: TagDef[];
   flows: DiagramFlow[];
   chat: ChatMessage[];
@@ -42,14 +52,28 @@ export function PerspectiveBar({
   onRenameFlow: (id: string, name: string) => void;
   onSendChat: (text: string) => void;
 }) {
-  const [tab, setTab] = useState<"tags" | "flows" | "chat">("tags");
+  const [tab, setTab] = useState<"tags" | "flows" | "chat" | "ai">("tags");
   const [draft, setDraft] = useState("");
+  const [aiDraft, setAiDraft] = useState("");
+  const [keyOpen, setKeyOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const aiEndRef = useRef<HTMLDivElement>(null);
+  const ai = useAiDiagramChat({
+    diagramId,
+    getSnapshot,
+    applyEdits: applyAiEdits,
+    readOnly,
+  });
 
   useEffect(() => {
     if (tab !== "chat") return;
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, tab]);
+
+  useEffect(() => {
+    if (tab !== "ai") return;
+    aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [ai.messages, tab, ai.pending]);
 
   return (
     <div className="absolute bottom-14 left-1/2 z-20 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 shadow-2xl backdrop-blur">
@@ -62,6 +86,9 @@ export function PerspectiveBar({
         </TabButton>
         <TabButton active={tab === "chat"} onClick={() => setTab("chat")}>
           {chat.length ? `Chat · ${chat.length}` : "Chat"}
+        </TabButton>
+        <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>
+          AI
         </TabButton>
         {tab === "tags" ? (
           <div className="ml-auto flex items-center gap-0.5">
@@ -84,6 +111,29 @@ export function PerspectiveBar({
                 onClick={onCreateFlow}
               >
                 <Plus className="size-3.5" /> New flow
+              </button>
+            ) : null}
+          </div>
+        ) : tab === "ai" ? (
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              className="rounded-lg px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              onClick={() => {
+                setKeyOpen((open) => !open);
+                void ai.refreshKeyStatus();
+              }}
+            >
+              {ai.configured ? "API key" : "Add key"}
+            </button>
+            {ai.messages.length ? (
+              <button
+                type="button"
+                title="Clear AI thread"
+                className="grid size-7 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                onClick={ai.clearThread}
+              >
+                <Trash2 className="size-3.5" />
               </button>
             ) : null}
           </div>
@@ -138,6 +188,82 @@ export function PerspectiveBar({
             <button
               type="submit"
               disabled={!draft.trim()}
+              className="grid size-8 place-items-center rounded-lg bg-primary text-white disabled:opacity-40"
+            >
+              <Send className="size-3.5" />
+            </button>
+          </form>
+        </div>
+      ) : tab === "ai" ? (
+        <div className="flex h-64 flex-col">
+          {keyOpen || !ai.configured ? (
+            <div className="border-b border-[#2a2a2e] px-3 py-2.5">
+              <OpenAiKeySettings
+                onChanged={() => {
+                  void ai.refreshKeyStatus();
+                }}
+              />
+              <p className="mt-2 text-[11px] text-zinc-500">
+                Uses your OpenAI key. MCP remains for Cursor and other agents.
+              </p>
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2.5">
+            {ai.messages.length === 0 ? (
+              <div className="flex items-start gap-2 text-[11px] text-zinc-500">
+                <Sparkles className="mt-0.5 size-3.5 shrink-0 text-indigo-300" />
+                <p>
+                  Ask about this diagram or tell the AI to add, rename, connect, or remove nodes. Edits apply
+                  to the canvas and show up in History.
+                </p>
+              </div>
+            ) : (
+              ai.messages.map((message) => (
+                <div key={message.id} className="space-y-1">
+                  <div className="text-[10px] font-medium tracking-wide text-zinc-500 uppercase">
+                    {message.role === "user" ? "You" : "AI"}
+                  </div>
+                  {message.role === "assistant" ? (
+                    <div className="markdown-body text-[12px] leading-5 text-zinc-300">
+                      <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+                    </div>
+                  ) : (
+                    <p className="text-[12px] leading-5 break-words text-zinc-200">{message.content}</p>
+                  )}
+                </div>
+              ))
+            )}
+            {ai.pending ? <p className="text-[11px] text-zinc-500">Thinking…</p> : null}
+            {ai.error ? <p className="text-[11px] text-red-400">{ai.error}</p> : null}
+            <div ref={aiEndRef} />
+          </div>
+          <form
+            className="flex items-center gap-2 border-t border-[#2a2a2e] px-2 py-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!aiDraft.trim() || ai.pending || readOnly) return;
+              const text = aiDraft;
+              setAiDraft("");
+              void ai.send(text);
+            }}
+          >
+            <input
+              value={aiDraft}
+              onChange={(event) => setAiDraft(event.target.value)}
+              placeholder={
+                readOnly
+                  ? "View-only"
+                  : ai.configured
+                    ? "Ask AI to edit this diagram…"
+                    : "Add an OpenAI API key first…"
+              }
+              disabled={readOnly || ai.pending || !ai.configured}
+              maxLength={4000}
+              className="h-8 min-w-0 flex-1 rounded-lg border border-[#2a2a2e] bg-[#0f0f12] px-2.5 text-[12px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-primary/50 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={readOnly || ai.pending || !ai.configured || !aiDraft.trim()}
               className="grid size-8 place-items-center rounded-lg bg-primary text-white disabled:opacity-40"
             >
               <Send className="size-3.5" />

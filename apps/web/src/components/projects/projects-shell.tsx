@@ -23,6 +23,7 @@ import { McpTokenDialog } from "@/components/projects/mcp-token-dialog";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
+import { OpenAiKeySettings } from "@/components/projects/openai-key-settings";
 import { TeamManageDialog } from "@/components/projects/team-manage-dialog";
 import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
@@ -198,6 +199,9 @@ export function ProjectsShell({
               Save name
             </Button>
           </form>
+          <div className="mt-4">
+            <OpenAiKeySettings />
+          </div>
         </ModalContent>
       </Modal>
       <McpTokenDialog open={mcpOpen} onOpenChange={setMcpOpen} />

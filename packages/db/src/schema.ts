@@ -36,6 +36,8 @@ export const users = dataflow.table("users", {
   passwordHash: text("password_hash"),
   mcpTokenHash: text("mcp_token_hash").unique(),
   mcpTokenCreatedAt: timestamp("mcp_token_created_at", { mode: "date" }),
+  openaiApiKeyCipher: text("openai_api_key_cipher"),
+  openaiApiKeyUpdatedAt: timestamp("openai_api_key_updated_at", { mode: "date" }),
 });
 
 export const accounts = dataflow.table(

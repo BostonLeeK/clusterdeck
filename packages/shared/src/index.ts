@@ -1,4 +1,5 @@
 export * from "./node-types";
+export * from "./diagram-edits";
 export * from "./templates";
 export * from "./yjs";
 export { toDrawio } from "./export-drawio";
