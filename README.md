@@ -24,6 +24,7 @@ Services:
 |-----------|-------------------------|
 | Web       | http://localhost:3000   |
 | Realtime  | ws://localhost:1234     |
+| MCP       | http://localhost:1235/mcp |
 | Postgres  | localhost:5432          |
 
 Useful commands:
@@ -61,3 +62,7 @@ pnpm dev
 ```
 
 OAuth works when `AUTH_GITHUB_*` / `AUTH_GOOGLE_*` are set.
+
+## MCP
+
+The realtime process also serves an MCP endpoint at `http://localhost:1235/mcp`. Each user creates a personal token from the account menu (MCP token) and sends it as `Authorization: Bearer <token>`. The token can read and edit only that user's diagrams. The server instructions describe the node types, technologies, and how `list_diagrams`, `get_diagram`, and `update_diagram` work. While an agent is changing the open diagram, a bot icon appears in the editor header next to the people and Share.

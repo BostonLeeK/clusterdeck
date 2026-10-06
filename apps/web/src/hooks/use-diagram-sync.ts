@@ -98,6 +98,7 @@ export function useDiagramSync(opts: {
   const [saved, setSaved] = useState(true);
   const [connected, setConnected] = useState(false);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
+  const [mcpActive, setMcpActive] = useState(false);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [role, setRole] = useState<MemberRole | "public">(opts.forceReadOnly ? "viewer" : "editor");
   const [readOnly, setReadOnly] = useState(Boolean(opts.forceReadOnly));
@@ -202,6 +203,7 @@ export function useDiagramSync(opts: {
     getChatArray(doc).observe(refreshChat);
 
     let cancelled = false;
+    let mcpTimer: ReturnType<typeof setTimeout> | null = null;
 
     void issueRealtimeToken(opts.diagramId, opts.shareToken)
       .then(({ token, role: nextRole, readOnly: nextReadOnly }) => {
@@ -274,6 +276,21 @@ export function useDiagramSync(opts: {
         });
         provider.on("awarenessUpdate", onAwareness);
         provider.awareness?.on("change", onAwareness);
+        provider.on("stateless", ({ payload }: { payload: string }) => {
+          try {
+            const message = JSON.parse(payload) as { type?: string; active?: boolean };
+            if (message.type !== "mcp") return;
+            if (mcpTimer) clearTimeout(mcpTimer);
+            if (!message.active) {
+              setMcpActive(false);
+              return;
+            }
+            setMcpActive(true);
+            mcpTimer = setTimeout(() => setMcpActive(false), 25000);
+          } catch {
+            return;
+          }
+        });
         publishLocalUser();
         onAwareness();
       })
@@ -287,6 +304,8 @@ export function useDiagramSync(opts: {
       doc.off("update", hydrateRemote);
       getChatArray(doc).unobserve(refreshChat);
       if (persistTimer.current) clearTimeout(persistTimer.current);
+      if (mcpTimer) clearTimeout(mcpTimer);
+      setMcpActive(false);
       providerRef.current?.destroy();
       providerRef.current = null;
       setConnected(false);
@@ -690,6 +709,7 @@ export function useDiagramSync(opts: {
     duplicateNodes,
     saved,
     connected,
+    mcpActive,
     presence,
     chat,
     sendChat,

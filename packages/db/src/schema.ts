@@ -33,6 +33,8 @@ export const users = dataflow.table("users", {
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
   passwordHash: text("password_hash"),
+  mcpTokenHash: text("mcp_token_hash").unique(),
+  mcpTokenCreatedAt: timestamp("mcp_token_created_at", { mode: "date" }),
 });
 
 export const accounts = dataflow.table(

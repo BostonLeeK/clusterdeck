@@ -4,6 +4,7 @@ import { jwtVerify } from "jose";
 import * as Y from "yjs";
 import { snapshotFromDoc, type MemberRole } from "@dataflow/shared";
 import { db, diagrams, projects } from "@dataflow/db";
+import { startMcp } from "./mcp";
 
 type AuthContext = {
   userId: string;
@@ -62,4 +63,5 @@ const server = new Server({
 });
 
 await server.listen();
+startMcp(server.hocuspocus);
 console.log(`realtime listening on ws://localhost:${port}`);

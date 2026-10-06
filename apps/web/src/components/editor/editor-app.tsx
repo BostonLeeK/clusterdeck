@@ -14,6 +14,7 @@ import {
 } from "@xyflow/react";
 import {
   ArrowLeft,
+  Bot,
   Hand,
   MessageSquare,
   Minus,
@@ -476,6 +477,14 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               {sync.connected ? "Live" : "…"}
             </span>
           </div>
+          {sync.mcpActive ? (
+            <span
+              title="MCP agent is editing this diagram"
+              className="grid size-8 place-items-center rounded-lg bg-emerald-400/10 text-emerald-400"
+            >
+              <Bot className="size-4" />
+            </span>
+          ) : null}
           {isPublic ? (
             <Button asChild size="sm" className="h-8 rounded-lg">
               <Link href="/sign-in">Sign in to edit</Link>

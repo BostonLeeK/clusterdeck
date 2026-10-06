@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { logout, updateProfileName } from "@/actions/auth";
 import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
+import { McpTokenDialog } from "@/components/projects/mcp-token-dialog";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
 import { TeamManageDialog } from "@/components/projects/team-manage-dialog";
@@ -78,6 +79,7 @@ export function ProjectsShell({
   const view = params.get("view") === "list" ? "list" : "grid";
   const activeFilter = filter === "trash" || filter === "templates" || filter === "team" ? "all" : filter;
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const activeWorkspace = workspaces.find((item) => item.id === workspaceId) ?? workspaces[0];
 
@@ -144,6 +146,13 @@ export function ProjectsShell({
               >
                 Edit profile
               </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMcpOpen(true);
+                }}
+              >
+                MCP token
+              </MenuItem>
               <MenuItem onSelect={() => logout()}>Sign out</MenuItem>
             </MenuContent>
           </Menu>
@@ -184,6 +193,7 @@ export function ProjectsShell({
           </form>
         </ModalContent>
       </Modal>
+      <McpTokenDialog open={mcpOpen} onOpenChange={setMcpOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 px-6 pt-4 pb-2">

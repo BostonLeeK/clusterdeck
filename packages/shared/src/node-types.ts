@@ -1,4 +1,4 @@
-export const NODE_CATEGORIES = ["compute", "data", "messaging", "network", "external", "observability", "config"] as const;
+export const NODE_CATEGORIES = ["compute", "data", "model", "messaging", "network", "external", "observability", "config"] as const;
 
 export type NodeCategory = (typeof NODE_CATEGORIES)[number];
 
@@ -13,6 +13,8 @@ export const NODE_TYPE_IDS = [
   "s3",
   "storage",
   "search",
+  "table",
+  "custom",
   "kafka",
   "rabbitmq",
   "queue",
@@ -206,6 +208,8 @@ export const NODE_LIBRARY: NodeTypeDefinition[] = [
   { id: "s3", label: "S3", category: "data", subtitle: "Object storage", icon: "hard-drive", color: "#fb923c", defaultShape: "rounded", defaultScope: "internal" },
   { id: "storage", label: "Storage", category: "data", subtitle: "Storage", icon: "archive", color: "#d6d3d1", defaultShape: "rounded", defaultScope: "internal" },
   { id: "search", label: "Search", category: "data", subtitle: "Search", icon: "search", color: "#14b8a6", defaultShape: "rounded", defaultScope: "internal" },
+  { id: "table", label: "Table", category: "model", subtitle: "Table", icon: "table", color: "#93c5fd", defaultShape: "rectangle", defaultScope: "internal" },
+  { id: "custom", label: "Custom", category: "model", subtitle: "Custom", icon: "shapes", color: "#fde68a", defaultShape: "rounded", defaultScope: "internal" },
   { id: "kafka", label: "Kafka", category: "messaging", subtitle: "Kafka", icon: "radio", color: "#c084fc", defaultShape: "rounded", defaultScope: "internal" },
   { id: "rabbitmq", label: "RabbitMQ", category: "messaging", subtitle: "Queue", icon: "inbox", color: "#f97316", defaultShape: "rounded", defaultScope: "internal" },
   { id: "queue", label: "Queue", category: "messaging", subtitle: "Queue", icon: "list-ordered", color: "#fb7185", defaultShape: "rounded", defaultScope: "internal" },
@@ -225,6 +229,7 @@ export const NODE_LIBRARY: NodeTypeDefinition[] = [
 export const CATEGORY_LABELS: Record<NodeCategory, string> = {
   compute: "Compute",
   data: "Data",
+  model: "Model",
   messaging: "Messaging",
   network: "Network",
   external: "External",
