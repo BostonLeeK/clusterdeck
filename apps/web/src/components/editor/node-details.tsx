@@ -22,6 +22,7 @@ import {
   Pencil,
   Plus,
   RectangleHorizontal,
+  Search,
   Sparkles,
   Square,
   Trash2,
@@ -194,7 +195,7 @@ export function NodeDetails({
   }
   if (payload.kind === "group") {
     return (
-      <div className="space-y-3 p-4">
+      <div className="h-full space-y-3 overflow-y-auto p-4">
         <PanelHeader title="Subworkflow" onClose={onClose} />
         <p className="text-sm text-zinc-500">
           {payload.childCount ?? 0} {payload.childCount === 1 ? "node" : "nodes"} inside
@@ -227,6 +228,7 @@ export function NodeDetails({
           </Button>
         ) : null}
         <ConnectorsBlock
+          key={node.id}
           options={groupChildren}
           connectors={payload.connectors ?? []}
           readOnly={readOnly}
@@ -889,6 +891,8 @@ function InfraDetails({
   );
 }
 
+const CONNECTOR_SEARCH_THRESHOLD = 8;
+
 function ConnectorsBlock({
   options,
   connectors,
@@ -902,6 +906,7 @@ function ConnectorsBlock({
   emptyText: string;
   onChange: (connectors: NodeConnector[]) => void;
 }) {
+  const [query, setQuery] = useState("");
   const enabled = new Set(connectors.map((item) => `${item.direction}:${item.nodeId}`));
   const known = new Set((options ?? []).map((item) => item.id));
   const orphaned = connectors.filter((item) => options && !known.has(item.nodeId));
@@ -911,6 +916,9 @@ function ConnectorsBlock({
       .filter((item, index, list) => list.findIndex((other) => other.nodeId === item.nodeId) === index)
       .map((item) => ({ id: item.nodeId, title: item.title, kind: "infra" as const })),
   ];
+  const needle = query.trim().toLowerCase();
+  const visibleRows = needle ? rows.filter((row) => row.title.toLowerCase().includes(needle)) : rows;
+  const searchable = rows.length > CONNECTOR_SEARCH_THRESHOLD;
 
   function toggle(option: InnerNodeOption, direction: ConnectorDirection) {
     const key = `${direction}:${option.id}`;
@@ -923,15 +931,38 @@ function ConnectorsBlock({
 
   return (
     <div className="mt-4">
-      <Label>Connectors</Label>
+      <div className="flex items-baseline justify-between gap-2">
+        <Label>Connectors</Label>
+        {connectors.length ? (
+          <span className="text-[11px] text-zinc-500">{connectors.length} active</span>
+        ) : null}
+      </div>
       <p className="mt-1 text-[11px] text-zinc-500">Pick which inner nodes get their own point on this frame.</p>
-      <div className="mt-2 space-y-1">
+      {searchable ? (
+        <div className="relative mt-2">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-zinc-500" />
+          <Input
+            value={query}
+            placeholder={`Filter ${rows.length} nodes…`}
+            className="h-8 pl-8 text-xs"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "mt-2 space-y-1",
+          searchable && "max-h-72 overflow-y-auto rounded-xl border border-[#2a2a2e] bg-[#121214] p-1",
+        )}
+      >
         {options === null ? (
           <p className="text-xs text-zinc-500">Loading…</p>
         ) : rows.length === 0 ? (
           <p className="text-xs text-zinc-500">{emptyText}</p>
+        ) : visibleRows.length === 0 ? (
+          <p className="px-1 py-1 text-xs text-zinc-500">No nodes match “{query.trim()}”.</p>
         ) : (
-          rows.map((option) => {
+          visibleRows.map((option) => {
             const missing = !known.has(option.id);
             return (
               <div key={option.id} className="flex items-center gap-2 rounded-lg px-1 py-1 text-xs">

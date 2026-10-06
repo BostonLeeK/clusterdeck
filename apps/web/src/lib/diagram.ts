@@ -140,7 +140,6 @@ export function toFlowNodes(nodes: DiagramNode[]): Node[] {
       type: node.type,
       position: node.position,
       parentId: node.parentId,
-      extent: node.parentId ? ("parent" as const) : node.extent,
       style: layout.style,
       data: data as unknown as Record<string, unknown>,
       width: layout.width,
@@ -305,7 +304,6 @@ export function groupSelectedNodes(nodes: Node[]): Node[] | null {
     type: "group",
     position: { x: minX - parentAbs.x, y: minY - parentAbs.y },
     parentId: commonParent,
-    extent: commonParent ? "parent" : undefined,
     width,
     height,
     style: { width, height },
@@ -328,7 +326,7 @@ export function groupSelectedNodes(nodes: Node[]): Node[] | null {
         return {
           ...node,
           parentId: groupId,
-          extent: "parent" as const,
+          extent: undefined,
           position: { x: abs.x - minX, y: abs.y - minY },
           selected: false,
         };
@@ -354,7 +352,7 @@ export function ungroupNode(nodes: Node[], groupId: string): Node[] {
           return {
             ...node,
             parentId: nextParent,
-            extent: nextParent ? ("parent" as const) : undefined,
+            extent: undefined,
             position: {
               x: groupAbs.x + node.position.x - parentAbs.x,
               y: groupAbs.y + node.position.y - parentAbs.y,
@@ -427,7 +425,7 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
           return {
             ...item,
             parentId: groupId,
-            extent: "parent" as const,
+            extent: undefined,
             position: { x: relX, y: relY },
           };
         }
@@ -441,6 +439,23 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
       }),
     ),
   );
+}
+
+export function detachFromGroup(nodes: Node[], ids: string[]): Node[] {
+  const selected = new Set(ids);
+  return ids.reduce((current, id) => {
+    const node = current.find((item) => item.id === id);
+    const parent = node?.parentId ? current.find((item) => item.id === node.parentId) : undefined;
+    if (!node || !parent || selected.has(parent.id)) return current;
+    const grandparentId = parent.parentId ?? null;
+    const detached = attachNodeToGroup(current, id, grandparentId);
+    const frame = detached.find((item) => item.id === parent.id) ?? parent;
+    const x = frame.position.x + nodeSize(frame).width + 40;
+    const moved = detached.map((item) =>
+      item.id === id ? { ...item, position: { x, y: item.position.y } } : item,
+    );
+    return grandparentId ? attachNodeToGroup(moved, id, grandparentId) : moved;
+  }, nodes);
 }
 
 export function withDescendants(nodes: Node[], ids: Iterable<string>): Set<string> {

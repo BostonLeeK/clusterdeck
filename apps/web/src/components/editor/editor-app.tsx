@@ -69,7 +69,13 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { useIsMobile } from "@/hooks/use-media-query";
-import { attachNodeToGroup, groupSelectedNodes, ungroupNode, withDescendants } from "@/lib/diagram";
+import {
+  attachNodeToGroup,
+  detachFromGroup,
+  groupSelectedNodes,
+  ungroupNode,
+  withDescendants,
+} from "@/lib/diagram";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
 import { detectTrackpad, setNavigationMode, useNavigationMode } from "@/lib/navigation-mode";
 
@@ -354,21 +360,35 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       const draggedIds = new Set(dragged.map((node) => node.id));
       let next = sync.nodes;
       for (const node of dragged) {
-        if (node.type === "group" || (node.parentId && draggedIds.has(node.parentId))) continue;
-        const hits = getIntersectingNodes(node).filter(
-          (item) => item.type === "group" && !draggedIds.has(item.id),
-        );
-        const target = hits.reduce<Node | undefined>(
-          (smallest, item) => (!smallest || nodeArea(item) < nodeArea(smallest) ? item : smallest),
-          undefined,
-        );
+        if (node.parentId && draggedIds.has(node.parentId)) continue;
+        const own = withDescendants(next, [node.id]);
+        const isCandidate = (item: Node) => item.type === "group" && !own.has(item.id) && !draggedIds.has(item.id);
+        const target = getIntersectingNodes(node)
+          .filter(isCandidate)
+          .reduce<Node | undefined>(
+            (smallest, item) => (!smallest || nodeArea(item) < nodeArea(smallest) ? item : smallest),
+            undefined,
+          );
         const parentId = next.find((item) => item.id === node.id)?.parentId;
-        if (target && target.id !== parentId) next = attachNodeToGroup(next, node.id, target.id);
-        else if (parentId && !hits.some((item) => item.id === parentId)) next = attachNodeToGroup(next, node.id, null);
+        if (!target) {
+          if (parentId) next = attachNodeToGroup(next, node.id, null);
+          continue;
+        }
+        const contained = getIntersectingNodes(node, false).some((item) => item.id === target.id);
+        if (target.id !== parentId || !contained) next = attachNodeToGroup(next, node.id, target.id);
       }
       if (next !== sync.nodes) sync.commitNodes(next);
     },
     [getIntersectingNodes, sync],
+  );
+
+  const removeFromGroup = useCallback(
+    (ids: string[]) => {
+      if (sync.readOnly) return;
+      const next = detachFromGroup(sync.nodes, ids);
+      if (next !== sync.nodes) sync.commitNodes(next);
+    },
+    [sync],
   );
 
   const ungroupSelection = useCallback(() => {
@@ -1116,6 +1136,17 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 >
                   {menu.nodeType === "group" ? "Unpack subworkflow" : "Group into subworkflow"}
                 </ContextMenuItem>
+                {menu.nodeIds.some((id) => sync.nodes.find((node) => node.id === id)?.parentId) ? (
+                  <ContextMenuItem
+                    disabled={sync.readOnly}
+                    onSelect={() => {
+                      removeFromGroup(menu.nodeIds);
+                      closeMenu();
+                    }}
+                  >
+                    Remove from subworkflow
+                  </ContextMenuItem>
+                ) : null}
                 {menu.nodeType === "group" ? (
                   <ContextMenuItem
                     disabled={sync.readOnly}

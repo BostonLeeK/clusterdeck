@@ -774,7 +774,6 @@ export function useDiagramSync(opts: {
           type: node.type ?? "infra",
           selected: true,
           parentId: parentCopied ? idMap.get(node.parentId!) : parentKept ? node.parentId : undefined,
-          extent: parentCopied || parentKept ? ("parent" as const) : undefined,
           position: parentCopied
             ? { ...node.position }
             : { x: node.position.x + offset.x, y: node.position.y + offset.y },
