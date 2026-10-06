@@ -331,9 +331,6 @@ export function groupSelectedNodes(nodes: Node[]): Node[] | null {
           extent: "parent" as const,
           position: { x: abs.x - minX, y: abs.y - minY },
           selected: false,
-          width: undefined,
-          height: undefined,
-          style: undefined,
         };
       }),
     ]),
@@ -363,9 +360,6 @@ export function ungroupNode(nodes: Node[], groupId: string): Node[] {
               y: groupAbs.y + node.position.y - parentAbs.y,
             },
             selected: true,
-            width: undefined,
-            height: undefined,
-            style: undefined,
           };
         }),
     ),
@@ -394,9 +388,6 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
                 parentId: undefined,
                 extent: undefined,
                 position: abs,
-                width: undefined,
-                height: undefined,
-                style: undefined,
               }
             : item,
         ),
@@ -438,9 +429,6 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
             parentId: groupId,
             extent: "parent" as const,
             position: { x: relX, y: relY },
-            width: undefined,
-            height: undefined,
-            style: undefined,
           };
         }
         if (item.parentId === groupId && (shiftX || shiftY)) {
@@ -455,14 +443,17 @@ export function attachNodeToGroup(nodes: Node[], nodeId: string, groupId: string
   );
 }
 
-function withGroupCounts(nodes: Node[]): Node[] {
+export function withGroupCounts(nodes: Node[]): Node[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {
     if (node.parentId) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
   }
   return nodes.map((node) => {
     if (node.type !== "group") return node;
-    return { ...node, data: { ...node.data, childCount: counts.get(node.id) ?? 0 } };
+    const nextCount = counts.get(node.id) ?? 0;
+    const data = node.data as { childCount?: number };
+    if (data.childCount === nextCount) return node;
+    return { ...node, data: { ...node.data, childCount: nextCount } };
   });
 }
 

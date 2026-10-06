@@ -37,6 +37,7 @@ import {
   normalizeFlowInfraNode,
   toFlowEdges,
   toFlowNodes,
+  withGroupCounts,
   type EdgePatch,
   type FlowEdgeData,
 } from "@/lib/diagram";
@@ -658,7 +659,7 @@ export function useDiagramSync(opts: {
           }
         }
       }
-      const nextNodes = nodesRef.current.filter((node) => !remove.has(node.id));
+      const nextNodes = withGroupCounts(nodesRef.current.filter((node) => !remove.has(node.id)));
       const nextEdges = edgesRef.current.filter(
         (edge) => !remove.has(edge.source) && !remove.has(edge.target),
       );
@@ -762,7 +763,10 @@ export function useDiagramSync(opts: {
         };
         return depth(left.id) - depth(right.id);
       });
-      const nextNodes = [...nodesRef.current.map((node) => ({ ...node, selected: false })), ...ordered];
+      const nextNodes = withGroupCounts([
+        ...nodesRef.current.map((node) => ({ ...node, selected: false })),
+        ...ordered,
+      ]);
       const nextEdges = [
         ...edgesRef.current.map((edge) => ({ ...edge, selected: false })),
         ...sourceEdges
@@ -803,10 +807,10 @@ export function useDiagramSync(opts: {
         position: { x: node.position.x + 40, y: node.position.y + 40 },
         data: remapConnectors(structuredClone(node.data), idMap),
       }));
-      const nextNodes = [
+      const nextNodes = withGroupCounts([
         ...nodesRef.current.map((node) => ({ ...node, selected: false })),
         ...clones,
-      ];
+      ]);
       const nextEdges = [
         ...edgesRef.current.map((edge) => ({ ...edge, selected: false })),
         ...edgesRef.current
