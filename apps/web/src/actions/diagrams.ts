@@ -139,7 +139,7 @@ type InnerDiagramLink = { diagramId: string; nodeCount: number };
 const MAX_CLONE_DEPTH = 12;
 
 async function cloneDiagramTree(
-  source: DiagramRow,
+  source: Pick<DiagramRow, "id" | "name" | "snapshot">,
   target: { projectId: string; parentDiagramId: string; parentNodeId: string },
   depth = 0,
 ): Promise<InnerDiagramLink> {
@@ -214,6 +214,23 @@ export async function cloneInnerDiagrams(
     });
   }
   return result;
+}
+
+export async function createContainerDiagram(
+  diagramId: string,
+  containerNodeId: string,
+  name: string,
+  snapshot: DiagramSnapshot,
+): Promise<InnerDiagramLink> {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access || !canEdit(access.role)) throw new Error("forbidden");
+  return cloneDiagramTree(
+    { id: diagramId, name, snapshot },
+    { projectId: bundle.diagram.projectId, parentDiagramId: diagramId, parentNodeId: containerNodeId },
+  );
 }
 
 export type InnerNodeOption = { id: string; title: string; kind: "infra" | "group" };

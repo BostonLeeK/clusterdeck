@@ -26,6 +26,7 @@ export default async function EditorPage({
 
   return (
     <EditorApp
+      key={diagramId}
       projectId={projectId}
       diagramId={diagramId}
       projectName={bundle.project.name}

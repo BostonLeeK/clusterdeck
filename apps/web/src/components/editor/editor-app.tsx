@@ -39,7 +39,7 @@ import type {
   MemberRole,
 } from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
-import { openOrCreateInnerDiagram } from "@/actions/diagrams";
+import { createContainerDiagram, openOrCreateInnerDiagram } from "@/actions/diagrams";
 import { setProjectMcpEnabled } from "@/actions/mcp";
 import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
@@ -76,7 +76,10 @@ import {
   ungroupNode,
   withDescendants,
 } from "@/lib/diagram";
+import { extractToContainer } from "@/lib/extract-container";
+import { loadViewport, saveViewport } from "@/lib/viewport-memory";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
+import { toast } from "@/components/ui/toast";
 import { detectTrackpad, setNavigationMode, useNavigationMode } from "@/lib/navigation-mode";
 
 const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode, note: NoteNode };
@@ -389,6 +392,31 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       if (next !== sync.nodes) sync.commitNodes(next);
     },
     [sync],
+  );
+
+  const convertToContainer = useCallback(
+    async (ids: string[]) => {
+      if (sync.readOnly) return;
+      const containerId = crypto.randomUUID();
+      const draft = extractToContainer(sync.snapshot(), ids, containerId);
+      if (!draft) return;
+      try {
+        const link = await createContainerDiagram(props.diagramId, containerId, "Container", draft.inner);
+        const extraction = extractToContainer(sync.snapshot(), ids, containerId) ?? draft;
+        sync.replaceSnapshot({
+          ...extraction.outer,
+          nodes: extraction.outer.nodes.map((node) =>
+            node.id === containerId && node.data.kind === "infra"
+              ? { ...node, data: { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount } }
+              : node,
+          ),
+        });
+        selectNodeOnly(containerId);
+      } catch {
+        toast("Couldn’t create the container", "error");
+      }
+    },
+    [props.diagramId, selectNodeOnly, sync],
   );
 
   const ungroupSelection = useCallback(() => {
@@ -969,7 +997,6 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (isPublic) return;
                 if (node.type === "infra") void openInner();
               }}
-              fitView
               minZoom={0.01}
               maxZoom={4}
               panOnDrag={isPublic || isMobile || tool === "pan" ? true : [1]}
@@ -982,8 +1009,19 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               nodesDraggable={!sync.readOnly && !isPublic && (isMobile || tool === "select")}
               nodesConnectable={!sync.readOnly && !isPublic}
               elementsSelectable={!isPublic && (isMobile || tool === "select")}
-              onMoveEnd={() => setZoom(getZoom())}
-              onInit={(instance) => setZoom(instance.getZoom())}
+              onMoveEnd={(_, viewport) => {
+                setZoom(viewport.zoom);
+                saveViewport(props.diagramId, viewport);
+              }}
+              onInit={(instance) => {
+                const saved = loadViewport(props.diagramId);
+                if (saved) {
+                  void instance.setViewport(saved);
+                  setZoom(saved.zoom);
+                  return;
+                }
+                void instance.fitView().then(() => setZoom(instance.getZoom()));
+              }}
               proOptions={{ hideAttribution: true }}
               className="bg-[#0b0b0d]"
               defaultEdgeOptions={{ type: "labeled", style: { stroke: "#52525b", strokeWidth: 1.4 } }}
@@ -1135,6 +1173,16 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                   shortcut="⌘G"
                 >
                   {menu.nodeType === "group" ? "Unpack subworkflow" : "Group into subworkflow"}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={sync.readOnly}
+                  onSelect={() => {
+                    const ids = menu.nodeIds;
+                    closeMenu();
+                    void convertToContainer(ids);
+                  }}
+                >
+                  Convert to container
                 </ContextMenuItem>
                 {menu.nodeIds.some((id) => sync.nodes.find((node) => node.id === id)?.parentId) ? (
                   <ContextMenuItem
