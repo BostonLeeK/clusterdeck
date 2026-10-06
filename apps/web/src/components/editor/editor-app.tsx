@@ -8,6 +8,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useKeyPress,
   useReactFlow,
   useStore,
   type Node,
@@ -18,12 +19,14 @@ import {
   Hand,
   MessageSquare,
   Minus,
+  Mouse,
   MousePointer2,
   PanelLeftOpen,
   PanelRightOpen,
   Plus,
   Redo2,
   Square,
+  Touchpad,
   Type,
   Undo2,
 } from "lucide-react";
@@ -68,6 +71,7 @@ import { useDiagramSync } from "@/hooks/use-diagram-sync";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { attachNodeToGroup, groupSelectedNodes, ungroupNode } from "@/lib/diagram";
 import { getOrCreateGuestIdentity, isGuestUser } from "@/lib/guest-identity";
+import { detectTrackpad, setNavigationMode, useNavigationMode } from "@/lib/navigation-mode";
 
 const nodeTypes = { infra: InfraNode, group: GroupNode, port: PortNode, note: NoteNode };
 const edgeTypes = { labeled: LabeledEdge };
@@ -111,6 +115,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [zoom, setZoom] = useState(1);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
   const isMobile = useIsMobile();
+  const navigation = useNavigationMode();
+  const trackpad = navigation === "trackpad";
+  const spacePressed = useKeyPress("Space");
   const [leftPanel, setLeftPanel] = useState<boolean | null>(null);
   const [rightPanel, setRightPanel] = useState<boolean | null>(null);
   const [barPanel, setBarPanel] = useState<boolean | null>(null);
@@ -507,6 +514,13 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
         deleteSelection();
         return;
       }
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && !isPublic) {
+        const key = event.key.toLowerCase();
+        if (key === "v" || key === "h") {
+          setTool(key === "v" ? "select" : "pan");
+          return;
+        }
+      }
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "g") return;
       event.preventDefault();
       if (event.shiftKey) ungroupSelection();
@@ -514,7 +528,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [copySelection, deleteSelection, groupSelection, nodeSearchOpen, pasteSelection, sync.readOnly, sync.redo, sync.undo, ungroupSelection]);
+  }, [copySelection, deleteSelection, groupSelection, isPublic, nodeSearchOpen, pasteSelection, sync.readOnly, sync.redo, sync.undo, ungroupSelection]);
 
   const onPointerMoveCanvas = useCallback(
     (event: MouseEvent) => {
@@ -751,7 +765,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             />
           </aside>
         ) : null}
-        <div className="relative min-w-0 flex-1" ref={wrapper} onMouseMove={onPointerMoveCanvas}>
+        <div
+          className="relative min-w-0 flex-1"
+          ref={wrapper}
+          onMouseMove={onPointerMoveCanvas}
+          onWheelCapture={(event) => detectTrackpad(event.nativeEvent)}
+        >
           {!isPublic && !leftOpen ? (
             <button
               type="button"
@@ -784,8 +803,18 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               </div>
             ) : (
               <div className="absolute top-3 left-3 z-10 flex flex-col gap-0.5 rounded-2xl border border-[#2a2a2e] bg-[#141416]/95 p-1">
-                <Tool active={tool === "select"} icon={<MousePointer2 className="size-4" />} onClick={() => setTool("select")} />
-                <Tool active={tool === "pan"} icon={<Hand className="size-4" />} onClick={() => setTool("pan")} />
+                <Tool
+                  title="Select (V)"
+                  active={tool === "select"}
+                  icon={<MousePointer2 className="size-4" />}
+                  onClick={() => setTool("select")}
+                />
+                <Tool
+                  title="Hand (H) · or hold Space and drag"
+                  active={tool === "pan"}
+                  icon={<Hand className="size-4" />}
+                  onClick={() => setTool("pan")}
+                />
                 <Tool icon={<Plus className="size-4" />} onClick={() => createNode("service")} />
                 <Tool icon={<Square className="size-4" />} onClick={groupSelection} />
                 <Tool icon={<Type className="size-4" />} onClick={() => addNote("text")} />
@@ -904,7 +933,9 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               minZoom={0.01}
               maxZoom={4}
               panOnDrag={isPublic || isMobile || tool === "pan" ? true : [1]}
-              selectionOnDrag={!isPublic && !isMobile && tool === "select"}
+              selectionOnDrag={!isPublic && !isMobile && !spacePressed && tool === "select"}
+              panOnScroll={trackpad}
+              zoomOnScroll={!trackpad}
               selectNodesOnDrag={false}
               selectionKeyCode={isPublic ? null : "Shift"}
               multiSelectionKeyCode={isPublic ? null : "Shift"}
@@ -1180,6 +1211,20 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               <span className="sm:hidden">Fit</span>
               <span className="hidden sm:inline">Fit to screen</span>
             </button>
+            {isMobile ? null : (
+              <button
+                type="button"
+                title={
+                  trackpad
+                    ? "Trackpad: scroll to pan, pinch or ⌘/Ctrl + scroll to zoom. Click to switch to mouse"
+                    : "Mouse: scroll to zoom, middle button or Space + drag to pan. Click to switch to trackpad"
+                }
+                className="grid size-7 place-items-center rounded-lg border-l border-[#2a2a2e] hover:bg-white/5 hover:text-white"
+                onClick={() => setNavigationMode(trackpad ? "mouse" : "trackpad")}
+              >
+                {trackpad ? <Touchpad className="size-3.5" /> : <Mouse className="size-3.5" />}
+              </button>
+            )}
           </div>
         </div>
         {rightOpen ? (
