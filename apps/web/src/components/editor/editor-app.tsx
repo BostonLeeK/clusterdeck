@@ -347,6 +347,29 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     });
   }, [addNode, sync]);
 
+  const reparentDraggedNodes = useCallback(
+    (dragged: Node[]) => {
+      if (sync.readOnly) return;
+      const draggedIds = new Set(dragged.map((node) => node.id));
+      let next = sync.nodes;
+      for (const node of dragged) {
+        if (node.type === "group" || (node.parentId && draggedIds.has(node.parentId))) continue;
+        const hits = getIntersectingNodes(node).filter(
+          (item) => item.type === "group" && !draggedIds.has(item.id),
+        );
+        const target = hits.reduce<Node | undefined>(
+          (smallest, item) => (!smallest || nodeArea(item) < nodeArea(smallest) ? item : smallest),
+          undefined,
+        );
+        const parentId = next.find((item) => item.id === node.id)?.parentId;
+        if (target && target.id !== parentId) next = attachNodeToGroup(next, node.id, target.id);
+        else if (parentId && !hits.some((item) => item.id === parentId)) next = attachNodeToGroup(next, node.id, null);
+      }
+      if (next !== sync.nodes) sync.commitNodes(next);
+    },
+    [getIntersectingNodes, sync],
+  );
+
   const ungroupSelection = useCallback(() => {
     if (sync.readOnly) return;
     const group = sync.nodes.find((node) => node.selected && node.type === "group");
@@ -850,24 +873,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 }
                 selectNodeOnly(node.id);
               }}
-              onNodeDragStop={(_, node) => {
-                if (sync.readOnly || node.type === "group") return;
-                const hits = getIntersectingNodes(node).filter(
-                  (item) => item.type === "group" && item.id !== node.id,
-                );
-                const target = hits.sort((a, b) => {
-                  const aArea = (a.width ?? 1) * (a.height ?? 1);
-                  const bArea = (b.width ?? 1) * (b.height ?? 1);
-                  return aArea - bArea;
-                })[0];
-                if (target && target.id !== node.parentId) {
-                  sync.commitNodes(attachNodeToGroup(sync.nodes, node.id, target.id));
-                  return;
-                }
-                if (node.parentId && !hits.some((item) => item.id === node.parentId)) {
-                  sync.commitNodes(attachNodeToGroup(sync.nodes, node.id, null));
-                }
-              }}
+              onNodeDragStop={(_, node, nodes) => reparentDraggedNodes(nodes.length ? nodes : [node])}
+              onSelectionDragStop={(_, nodes) => reparentDraggedNodes(nodes)}
               onEdgeClick={(_, edge) => {
                 if (isPublic) return;
                 setMenu(null);
@@ -893,12 +900,28 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 if (isPublic || sync.readOnly) return;
                 event.preventDefault();
                 if (!node.selected) selectNodeOnly(node.id);
+                const nodeIds = node.selected
+                  ? sync.nodes.filter((item) => item.selected).map((item) => item.id)
+                  : [node.id];
                 setMenu({
                   kind: "node",
                   clientX: event.clientX,
                   clientY: event.clientY,
                   nodeId: node.id,
+                  nodeIds,
                   nodeType: node.type,
+                });
+              }}
+              onSelectionContextMenu={(event, nodes) => {
+                if (isPublic || sync.readOnly || !nodes[0]) return;
+                event.preventDefault();
+                setMenu({
+                  kind: "node",
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                  nodeId: nodes[0].id,
+                  nodeIds: nodes.map((item) => item.id),
+                  nodeType: nodes.length === 1 ? nodes[0].type : undefined,
                 });
               }}
               onEdgeContextMenu={(event, edge) => {
@@ -1066,8 +1089,8 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
             ) : null}
             {menu?.kind === "node" ? (
               <>
-                <ContextMenuLabel>Node</ContextMenuLabel>
-                {menu.nodeType === "infra" ? (
+                <ContextMenuLabel>{menu.nodeIds.length > 1 ? `${menu.nodeIds.length} nodes` : "Node"}</ContextMenuLabel>
+                {menu.nodeIds.length === 1 && menu.nodeType === "infra" ? (
                   <ContextMenuItem
                     onSelect={() => {
                       void openInner(menu.nodeId);
@@ -1080,7 +1103,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 <ContextMenuItem
                   disabled={sync.readOnly}
                   onSelect={() => {
-                    sync.duplicateNodes([menu.nodeId]);
+                    sync.duplicateNodes(menu.nodeIds);
                     closeMenu();
                   }}
                 >
@@ -1089,13 +1112,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 <ContextMenuItem
                   disabled={sync.readOnly}
                   onSelect={() => {
-                    selectNodeOnly(menu.nodeId);
                     groupSelection();
                     closeMenu();
                   }}
                   shortcut="⌘G"
                 >
-                  {menu.nodeType === "group" ? "Unpack subworkflow" : "Group selection"}
+                  {menu.nodeType === "group" ? "Unpack subworkflow" : "Group into subworkflow"}
                 </ContextMenuItem>
                 {menu.nodeType === "group" ? (
                   <ContextMenuItem
@@ -1114,7 +1136,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                   danger
                   disabled={sync.readOnly}
                   onSelect={() => {
-                    sync.deleteNodes([menu.nodeId]);
+                    sync.deleteNodes(menu.nodeIds);
                     closeMenu();
                   }}
                   shortcut="⌫"
@@ -1262,6 +1284,10 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       </div>
     </div>
   );
+}
+
+function nodeArea(node: Node) {
+  return (node.measured?.width ?? node.width ?? 1) * (node.measured?.height ?? node.height ?? 1);
 }
 
 function nodeTitle(nodes: Node[], id: string) {

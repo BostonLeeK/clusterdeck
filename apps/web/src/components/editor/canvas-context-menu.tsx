@@ -16,6 +16,7 @@ export type CanvasMenuState =
       clientX: number;
       clientY: number;
       nodeId: string;
+      nodeIds: string[];
       nodeType?: string;
     }
   | {
