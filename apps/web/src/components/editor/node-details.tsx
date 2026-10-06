@@ -362,7 +362,7 @@ function InfraDetails({
       if (selected.has(item.id)) return false;
       if (!q) return true;
       return item.label.toLowerCase().includes(q) || item.id.includes(q);
-    }).slice(0, 8);
+    });
   }, [data.technologies, techQuery]);
 
   const statusMeta = STATUS_OPTIONS.find((item) => item.value === status);
@@ -617,7 +617,7 @@ function InfraDetails({
                 onChange={(event) => setTechQuery(event.target.value)}
               />
               {techResults.length ? (
-                <div className="overflow-hidden rounded-xl border border-[#2a2a2e] bg-[#121214]">
+                <div className="max-h-60 overflow-y-auto rounded-xl border border-[#2a2a2e] bg-[#121214]">
                   {techResults.map((item) => {
                     const TechIcon = TECH_ICONS[item.icon];
                     return (
