@@ -1,30 +1,80 @@
 import type { DiagramNode, DiagramSnapshot } from "@dataflow/shared";
 import { nodeTypeById } from "@dataflow/shared";
+import { cn } from "@/lib/utils";
+
+type Box = { node: DiagramNode; x: number; y: number; width: number; height: number };
+
+const NOMINAL_WIDTH = 560;
+const NOMINAL_HEIGHT = 140;
+const PADDING_RATIO = 0.06;
+const MIN_LABEL_PX = 9;
+const FONT = "Inter, system-ui, sans-serif";
+
+const DEFAULT_SIZE: Record<DiagramNode["type"], { width: number; height: number }> = {
+  infra: { width: 240, height: 96 },
+  group: { width: 520, height: 280 },
+  note: { width: 240, height: 120 },
+  port: { width: 120, height: 32 },
+};
+
+function accentOf(node: DiagramNode) {
+  if (node.data.kind === "infra") return node.data.accentColor ?? nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
+  if (node.data.kind === "group") return "#818cf8";
+  return "#facc15";
+}
 
 function titleOf(node: DiagramNode) {
-  return node.data.kind === "port" ? node.data.title : node.data.title;
+  return "title" in node.data ? (node.data.title ?? "").trim() : "";
 }
 
-function subtitleOf(node: DiagramNode) {
-  if (node.data.kind === "infra") return node.data.subtitle ?? nodeTypeById(node.data.typeId)?.subtitle ?? "";
-  if (node.data.kind === "group") return node.data.subtitle ?? "";
-  return "";
+function truncate(text: string, maxChars: number) {
+  if (maxChars < 3) return "";
+  return text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
 }
 
-function colorOf(node: DiagramNode) {
-  if (node.data.kind === "infra") {
-    return node.data.accentColor ?? nodeTypeById(node.data.typeId)?.color ?? "#a1a1aa";
+function layoutBoxes(snapshot: DiagramSnapshot): Box[] {
+  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const absolute = (node: DiagramNode) => {
+    let { x, y } = node.position;
+    let parent = node.parentId ? byId.get(node.parentId) : undefined;
+    while (parent) {
+      x += parent.position.x;
+      y += parent.position.y;
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+    return { x, y };
+  };
+  return snapshot.nodes
+    .filter((node) => node.type !== "port")
+    .map((node) => {
+      const size = DEFAULT_SIZE[node.type] ?? DEFAULT_SIZE.infra;
+      return {
+        node,
+        ...absolute(node),
+        width: node.width ?? size.width,
+        height: node.height ?? size.height,
+      };
+    });
+}
+
+function edgePath(source: Box, target: Box) {
+  const forward = target.x >= source.x + source.width;
+  const backward = source.x >= target.x + target.width;
+  if (forward || backward) {
+    const x1 = forward ? source.x + source.width : source.x;
+    const x2 = forward ? target.x : target.x + target.width;
+    const y1 = source.y + source.height / 2;
+    const y2 = target.y + target.height / 2;
+    const mx = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
   }
-  return "#818cf8";
-}
-
-function withAlpha(hex: string, alpha: number) {
-  const raw = hex.replace("#", "");
-  if (raw.length !== 6) return hex;
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+  const below = target.y >= source.y;
+  const x1 = source.x + source.width / 2;
+  const x2 = target.x + target.width / 2;
+  const y1 = below ? source.y + source.height : source.y;
+  const y2 = below ? target.y : target.y + target.height;
+  const my = (y1 + y2) / 2;
+  return `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
 }
 
 export function DiagramPreview({
@@ -34,92 +84,96 @@ export function DiagramPreview({
   snapshot: DiagramSnapshot;
   className?: string;
 }) {
-  const nodes = snapshot.nodes.filter((node) => node.type !== "port").slice(0, 10);
-  const empty = <div className={`rounded-xl bg-surface ${className}`} />;
-  if (nodes.length === 0) return empty;
+  const boxes = layoutBoxes(snapshot);
+  if (!boxes.length) return <div className={cn("rounded-xl bg-surface", className)} />;
 
-  const ids = new Set(nodes.map((node) => node.id));
-  const edges = snapshot.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
-  const incoming = new Set(edges.map((edge) => edge.target));
-  const roots = nodes.filter((node) => !incoming.has(node.id));
-  const start = roots[0] ?? nodes[0];
-  if (!start) return empty;
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const pad = Math.max(spanX, spanY) * PADDING_RATIO;
+  const viewWidth = spanX + pad * 2;
+  const viewHeight = spanY + pad * 2;
+  const scale = Math.min(NOMINAL_WIDTH / viewWidth, NOMINAL_HEIGHT / viewHeight);
+  const px = (value: number) => value / scale;
 
-  const columns: DiagramNode[][] = [];
-  const seen = new Set<string>();
-  let frontier = [start];
-  for (const extra of roots.slice(1)) frontier.push(extra);
-  while (frontier.length && columns.length < 3) {
-    const col = frontier.filter((node) => !seen.has(node.id)).slice(0, 4);
-    col.forEach((node) => seen.add(node.id));
-    if (col.length) columns.push(col);
-    const next: DiagramNode[] = [];
-    for (const node of col) {
-      for (const edge of edges) {
-        if (edge.source !== node.id || seen.has(edge.target)) continue;
-        const target = nodes.find((item) => item.id === edge.target);
-        if (target) next.push(target);
-      }
-    }
-    frontier = next;
-  }
-  for (const node of nodes) {
-    if (!seen.has(node.id) && columns.length && (columns.at(-1)?.length ?? 0) < 4) {
-      columns.at(-1)?.push(node);
-      seen.add(node.id);
-    }
-  }
+  const byId = new Map(boxes.map((box) => [box.node.id, box]));
+  const groups = boxes.filter((box) => box.node.type === "group");
+  const items = boxes.filter((box) => box.node.type !== "group");
 
-  const colW = 118;
-  const rowH = 34;
-  const padX = 8;
-  const padY = 10;
-  const height = 132;
-  const width = columns.length * colW + padX * 2;
-  const positions = new Map<string, { x: number; y: number }>();
-  columns.forEach((col, ci) => {
-    const total = col.length * rowH;
-    const startY = padY + Math.max(0, (height - padY * 2 - total) / 2);
-    col.forEach((node, ri) => {
-      positions.set(node.id, { x: padX + ci * colW, y: startY + ri * rowH });
-    });
-  });
+  const label = (box: Box, fontPx: number, inset: number, offsetY: number, color: string) => {
+    if (box.height * scale < MIN_LABEL_PX * 1.4) return null;
+    const maxChars = Math.floor((box.width * scale - inset * 2) / (fontPx * 0.56));
+    const text = truncate(titleOf(box.node), maxChars);
+    if (!text) return null;
+    return (
+      <text x={box.x + px(inset)} y={box.y + px(offsetY)} fill={color} fontSize={px(fontPx)} fontFamily={FONT}>
+        {text}
+      </text>
+    );
+  };
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className={`w-full overflow-visible ${className}`}>
-      {edges.map((edge) => {
-        const a = positions.get(edge.source);
-        const b = positions.get(edge.target);
-        if (!a || !b) return null;
-        const x1 = a.x + 86;
-        const y1 = a.y + 12;
-        const x2 = b.x;
-        const y2 = b.y + 12;
-        const mx = (x1 + x2) / 2;
+    <svg
+      viewBox={`${minX - pad} ${minY - pad} ${viewWidth} ${viewHeight}`}
+      preserveAspectRatio="xMidYMid meet"
+      className={cn("block w-full overflow-hidden", className)}
+      aria-hidden
+    >
+      {groups.map((box) => (
+        <g key={box.node.id}>
+          <rect
+            x={box.x}
+            y={box.y}
+            width={box.width}
+            height={box.height}
+            rx={px(6)}
+            fill="rgba(129,140,248,0.04)"
+            stroke="rgba(161,161,170,0.28)"
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+          />
+          {label(box, 8, 6, 12, "#a1a1aa")}
+        </g>
+      ))}
+      {snapshot.edges.map((edge) => {
+        const source = byId.get(edge.source);
+        const target = byId.get(edge.target);
+        if (!source || !target || source === target) return null;
         return (
           <path
             key={edge.id}
-            d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
+            d={edgePath(source, target)}
             fill="none"
-            stroke="#3f3f46"
-            strokeWidth="1.2"
+            stroke="#52525b"
+            strokeOpacity={0.8}
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
           />
         );
       })}
-      {Array.from(positions.entries()).map(([id, pos]) => {
-        const node = nodes.find((item) => item.id === id);
-        if (!node) return null;
-        const color = colorOf(node);
+      {items.map((box) => {
+        const accent = accentOf(box.node);
+        const note = box.node.type === "note";
         return (
-          <g key={id} transform={`translate(${pos.x},${pos.y})`}>
-            <rect width="88" height="24" rx="8" fill={withAlpha(color, 0.14)} stroke={withAlpha(color, 0.35)} />
-            <circle cx="11" cy="12" r="3.2" fill={color} />
-            <text x="20" y="11" fill="#f4f4f5" fontSize="8" fontFamily="Inter, system-ui">
-              {titleOf(node).slice(0, 14)}
-            </text>
-            <text x="20" y="19" fill="#a1a1aa" fontSize="6.5" fontFamily="Inter, system-ui">
-              {subtitleOf(node).slice(0, 16)}
-            </text>
+          <g key={box.node.id}>
+            <rect
+              x={box.x}
+              y={box.y}
+              width={box.width}
+              height={box.height}
+              rx={px(4)}
+              fill={note ? "rgba(250,204,21,0.08)" : "#18181b"}
+              stroke={note ? "rgba(250,204,21,0.3)" : accent}
+              strokeOpacity={note ? 1 : 0.55}
+              vectorEffect="non-scaling-stroke"
+            />
+            {!note ? (
+              <rect x={box.x} y={box.y} width={px(2)} height={box.height} rx={px(1)} fill={accent} />
+            ) : null}
+            {label(box, MIN_LABEL_PX, 6, Math.min(14, (box.height * scale) / 2 + 3), "#e4e4e7")}
           </g>
         );
       })}

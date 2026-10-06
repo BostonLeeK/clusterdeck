@@ -361,7 +361,7 @@ export function ProjectsShell({
             {filter === "templates"
               ? PROJECT_TEMPLATES.map((template) => (
                   <article key={template.id} className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
-                    <div className="rounded-xl bg-surface px-2 pt-2">
+                    <div className="overflow-hidden rounded-xl bg-surface p-3">
                       <DiagramPreview snapshot={template.snapshot} />
                     </div>
                     <h2 className="mt-3 text-[15px] font-medium">{template.name}</h2>
@@ -507,7 +507,7 @@ function ProjectTile({ project, trashed }: { project: ProjectCard; trashed: bool
   return (
     <article className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
       <Link href={projectHref(project)} className="block min-w-0">
-        <div className="rounded-xl bg-surface px-2 pt-2">
+        <div className="overflow-hidden rounded-xl bg-surface p-3">
           <DiagramPreview snapshot={project.snapshot} />
         </div>
         <div className="mt-3 flex items-start justify-between gap-3">
@@ -534,7 +534,7 @@ function ProjectRow({ project, trashed }: { project: ProjectCard; trashed: boole
     <article className="flex items-center gap-3 rounded-2xl border border-border bg-card p-2 pr-3 hover:border-zinc-700 sm:gap-4 sm:pr-4">
       <Link href={projectHref(project)} className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
         <div className="hidden w-44 shrink-0 overflow-hidden rounded-xl bg-surface sm:block">
-          <DiagramPreview snapshot={project.snapshot} className="h-[72px]" />
+          <DiagramPreview snapshot={project.snapshot} className="h-[72px] p-1.5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
