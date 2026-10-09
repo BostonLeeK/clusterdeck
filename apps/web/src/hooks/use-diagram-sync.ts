@@ -29,6 +29,7 @@ import {
   type DiagramSnapshot,
   type MemberRole,
   type NodeConnector,
+  type NodeObservation,
   type TagDef,
 } from "@dataflow/shared";
 import {
@@ -122,7 +123,10 @@ export function useDiagramSync(opts: {
   user: { id?: string | null; name?: string | null; email?: string | null; image?: string | null };
   forceReadOnly?: boolean;
   shareToken?: string;
+  onHealthObservations?: (items: NodeObservation[]) => void;
 }) {
+  const onHealthRef = useRef(opts.onHealthObservations);
+  onHealthRef.current = opts.onHealthObservations;
   const docRef = useRef<Y.Doc>(new Y.Doc());
   const nodesRef = useRef<Node[]>(toFlowNodes(opts.initial.nodes));
   const edgesRef = useRef<Edge[]>(toFlowEdges(opts.initial.edges));
@@ -347,7 +351,15 @@ export function useDiagramSync(opts: {
         provider.awareness?.on("change", onAwareness);
         provider.on("stateless", ({ payload }: { payload: string }) => {
           try {
-            const message = JSON.parse(payload) as { type?: string; active?: boolean };
+            const message = JSON.parse(payload) as {
+              type?: string;
+              active?: boolean;
+              observations?: NodeObservation[];
+            };
+            if (message.type === "health" && Array.isArray(message.observations)) {
+              onHealthRef.current?.(message.observations);
+              return;
+            }
             if (message.type !== "mcp") return;
             if (mcpTimer) clearTimeout(mcpTimer);
             if (!message.active) {

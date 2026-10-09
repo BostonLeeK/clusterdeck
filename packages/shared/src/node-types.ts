@@ -36,6 +36,27 @@ export type InfraNodeTypeId = (typeof NODE_TYPE_IDS)[number];
 
 export type NodeStatus = "healthy" | "degraded" | "unknown" | "offline";
 
+export const NODE_HEALTH_KINDS = ["http", "tcp", "external"] as const;
+export type NodeHealthKind = (typeof NODE_HEALTH_KINDS)[number];
+
+export type NodeHealthAlert = {
+  enabled: boolean;
+  emails?: string[];
+  failCount?: number;
+  windowSec?: number;
+  cooldownSec?: number;
+};
+
+export type NodeHealthConfig = {
+  enabled: boolean;
+  kind: NodeHealthKind;
+  url?: string;
+  expectStatus?: number;
+  intervalSec?: number;
+  staleAfterSec?: number;
+  alert?: NodeHealthAlert;
+};
+
 export const NODE_SHAPES = ["rounded", "rectangle", "cylinder", "hexagon", "actor", "stadium"] as const;
 export type NodeShape = (typeof NODE_SHAPES)[number];
 
@@ -131,6 +152,7 @@ export interface InfraNodeData {
   childDiagramId?: string | null;
   childCount?: number;
   connectors?: NodeConnector[];
+  health?: NodeHealthConfig;
   [key: string]: unknown;
 }
 
@@ -424,6 +446,7 @@ export function createInfraNodeData(
     childDiagramId: extra.childDiagramId,
     childCount: extra.childCount,
     connectors: extra.connectors,
+    health: extra.health,
   };
 }
 

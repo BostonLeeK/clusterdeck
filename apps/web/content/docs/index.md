@@ -18,6 +18,7 @@ ClusterDeck is a collaborative diagramming workspace for infrastructure, systems
 | **History** | Restore earlier saved versions of a diagram |
 | **AI** | Generate a first draft from a prompt |
 | **MCP** | Automate diagram updates from external tools |
+| **Live status** | Push observed health onto the canvas (TTL overlay) |
 
 ## Who it is for
 

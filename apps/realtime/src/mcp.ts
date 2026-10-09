@@ -5,7 +5,17 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Hocuspocus } from "@hocuspocus/server";
 import { and, desc, eq, exists, isNull, or } from "drizzle-orm";
 import { z } from "zod";
-import { db, diagrams, projectMembers, projects, users, workspaceMembers } from "@dataflow/db";
+import {
+  db,
+  diagrams,
+  listDiagramObservations,
+  projectMembers,
+  projects,
+  upsertNodeObservations,
+  users,
+  workspaceMembers,
+  type ObservationStatus,
+} from "@dataflow/db";
 import { EDGE_DIRECTIONS, EDGE_LINE_SHAPES, diagramAgentInstructions, snapshotFromDoc } from "@dataflow/shared";
 import { canEditProject, projectRole } from "./access";
 import { applyDiagramEdits, type EdgeInput, type NodeInput } from "./mcp-edit";
@@ -50,6 +60,27 @@ const nodeInput = z.object({
     .nullable()
     .optional()
     .describe("Hex from accent swatches, or null to reset."),
+  health: z
+    .object({
+      enabled: z.boolean(),
+      kind: z.enum(["http", "tcp", "external"]),
+      url: z.string().optional().describe("HTTP URL or TCP host:port. health-runner probes http/tcp."),
+      expectStatus: z.number().optional(),
+      intervalSec: z.number().optional(),
+      staleAfterSec: z.number().optional(),
+      alert: z
+        .object({
+          enabled: z.boolean(),
+          emails: z.array(z.string()).optional().describe("Recipients; empty uses project owner."),
+          failCount: z.number().optional().describe("Failures required inside windowSec (default 3)."),
+          windowSec: z.number().optional().describe("Failure window in seconds (default 300)."),
+          cooldownSec: z.number().optional().describe("Min seconds between emails (default 3600)."),
+        })
+        .optional(),
+    })
+    .nullable()
+    .optional()
+    .describe("Live-status probe + optional email alert config. null clears."),
   properties: z
     .array(propertyInput)
     .optional()
@@ -66,6 +97,18 @@ const nodeInput = z.object({
   protocol: z.string().optional().describe("Port protocol label."),
   parentNodeId: z.string().optional().describe("Port parent node id."),
   parentEdgeId: z.string().optional().describe("Port parent edge id."),
+});
+
+const observationInput = z.object({
+  nodeId: z.string().describe("Infra node id on the diagram."),
+  status: z.enum(["healthy", "degraded", "unknown", "offline"]),
+  message: z.string().optional().describe("Short reason shown in the UI tooltip."),
+  source: z.string().optional().describe("Reporter id, e.g. n8n, uptime-kuma, cron."),
+  staleAfterSec: z
+    .number()
+    .optional()
+    .describe("Seconds until the observation becomes stale (default 300)."),
+  checkedAt: z.string().optional().describe("ISO timestamp; defaults to now."),
 });
 
 const edgeInput = z.object({
@@ -244,6 +287,7 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
         "Omitted scalar fields on an existing id are kept. Arrays you send (tags, technologies, properties, connectors, tagDefs, flows) replace the previous value — use [] to clear.",
         "properties: canvas facts like OS/IP ({ key, value, icon?, showOnCanvas? }).",
         "connectors: publish inner-diagram nodes as parent in/out handles ({ nodeId, title, direction }). Edge handles become in:<nodeId> / out:<nodeId>.",
+        "For live/observed health use set_node_status (does not write diagram history).",
         "See server instructions for full field docs, catalogs, and examples.",
       ].join(" "),
       inputSchema: z.object({
@@ -276,6 +320,111 @@ function createMcp(hocuspocus: Hocuspocus, userId: string) {
           }),
         );
         return text(result);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "set_node_status",
+    {
+      description: [
+        "Push observed live status for infra nodes. Stored as a TTL overlay (not Yjs / not diagram history).",
+        "Use after probing healthUrl from an external runner (n8n, cron, Uptime Kuma). ClusterDeck does not probe URLs itself.",
+        "Canvas shows live status until staleAfterSec elapses, then falls back to the documented node status.",
+      ].join(" "),
+      inputSchema: z.object({
+        diagramId: z.string(),
+        observations: z.array(observationInput).min(1).max(200),
+      }),
+    },
+    async ({ diagramId, observations }) => {
+      try {
+        const [row] = await db
+          .select({ projectId: diagrams.projectId, mcpEnabled: projects.mcpEnabled })
+          .from(diagrams)
+          .innerJoin(projects, eq(diagrams.projectId, projects.id))
+          .where(eq(diagrams.id, diagramId))
+          .limit(1);
+        if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
+        const role = await projectRole(row.projectId, userId);
+        if (!canEditProject(role)) return failure(new Error("forbidden"));
+
+        const rows = await upsertNodeObservations(
+          observations.map((item) => ({
+            diagramId,
+            nodeId: item.nodeId,
+            status: item.status as ObservationStatus,
+            message: item.message,
+            source: item.source?.trim() || "mcp",
+            staleAfterSec: item.staleAfterSec,
+            checkedAt: item.checkedAt ? new Date(item.checkedAt) : undefined,
+          })),
+        );
+
+        const payload = {
+          type: "health",
+          diagramId,
+          observations: rows.map((item) => ({
+            nodeId: item.nodeId,
+            status: item.status,
+            checkedAt: item.checkedAt.toISOString(),
+            source: item.source,
+            message: item.message,
+            staleAfterSec: item.staleAfterSec,
+          })),
+        };
+
+        const connection = await hocuspocus.openDirectConnection(diagramId, {
+          userId: "mcp",
+          role: "editor",
+          diagramId,
+        });
+        try {
+          connection.document?.broadcastStateless(JSON.stringify(payload));
+        } finally {
+          await connection.disconnect();
+        }
+
+        return text({ ok: true, count: rows.length, observations: payload.observations });
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_node_status",
+    {
+      description: "List observed live statuses for a diagram (TTL overlay). Does not return documented node.status.",
+      inputSchema: z.object({
+        diagramId: z.string(),
+      }),
+    },
+    async ({ diagramId }) => {
+      try {
+        const [row] = await db
+          .select({ projectId: diagrams.projectId, mcpEnabled: projects.mcpEnabled })
+          .from(diagrams)
+          .innerJoin(projects, eq(diagrams.projectId, projects.id))
+          .where(eq(diagrams.id, diagramId))
+          .limit(1);
+        if (!row?.mcpEnabled) return failure(new Error("diagram not found"));
+        const role = await projectRole(row.projectId, userId);
+        if (!role) return failure(new Error("diagram not found"));
+        const rows = await listDiagramObservations(diagramId);
+        return text({
+          diagramId,
+          observations: rows.map((item) => ({
+            nodeId: item.nodeId,
+            status: item.status,
+            checkedAt: item.checkedAt.toISOString(),
+            source: item.source,
+            message: item.message,
+            staleAfterSec: item.staleAfterSec,
+          })),
+        });
       } catch (error) {
         return failure(error);
       }

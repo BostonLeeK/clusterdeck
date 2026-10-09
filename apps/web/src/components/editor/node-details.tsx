@@ -62,6 +62,8 @@ import { FormSelect } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { MarkdownField } from "@/components/editor/markdown-field";
 import { IconPicker } from "@/components/editor/icon-picker";
+import { useLiveStatus } from "@/components/editor/live-status";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 type ConnectionItem = { id: string; title: string; label?: string };
@@ -250,6 +252,7 @@ export function NodeDetails({
   return (
     <InfraDetails
       key={node.id}
+      nodeId={node.id}
       data={payload}
       connections={connections}
       tagDefs={tagDefs}
@@ -342,6 +345,7 @@ function MetaChip({
 }
 
 function InfraDetails({
+  nodeId,
   data,
   connections,
   tagDefs,
@@ -353,6 +357,7 @@ function InfraDetails({
   onClose,
   onConnectorsChange,
 }: {
+  nodeId: string;
   data: InfraNodeData;
   connections: { incoming: ConnectionItem[]; outgoing: ConnectionItem[] };
   tagDefs: TagDef[];
@@ -364,13 +369,17 @@ function InfraDetails({
   onSelectNode?: (id: string) => void;
   onConnectorsChange: (connectors: NodeConnector[]) => void;
 }) {
+  const live = useLiveStatus();
   const meta = nodeTypeById(data.typeId);
   const Icon = NODE_ICONS[data.typeId];
-  const status = data.status ?? "unknown";
+  const documentedStatus = data.status ?? "unknown";
+  const resolved = live.resolve(nodeId, documentedStatus, data.health);
+  const status = resolved.status;
   const accent = resolveAccentColor(data);
   const shape = resolveNodeShape(data);
   const scope = resolveNodeScope(data);
   const lifecycle = data.lifecycle ?? "live";
+  const health = data.health;
   const [editing, setEditing] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
   const [tagColor, setTagColor] = useState<string>(ACCENT_SWATCHES[0]!);
@@ -474,10 +483,19 @@ function InfraDetails({
         <div className="space-y-4">
           <div className="flex flex-wrap gap-1.5">
             <MetaChip icon={statusMeta?.icon} label={statusLabel(status)} />
+            {resolved.mode === "live" ? <MetaChip label="LIVE" /> : null}
+            {resolved.mode === "stale" ? <MetaChip label="STALE" /> : null}
             <MetaChip icon={lifecycleMeta?.icon} label={lifecycle} />
             <MetaChip icon={scopeMeta?.icon} label={scope} />
             <MetaChip icon={shapeMeta?.icon} label={shape} />
           </div>
+          {resolved.observation ? (
+            <p className="text-[11px] leading-4 text-zinc-500">
+              Last check {new Date(resolved.observation.checkedAt).toLocaleString()}
+              {resolved.observation.source ? ` · ${resolved.observation.source}` : ""}
+              {resolved.observation.message ? ` — ${resolved.observation.message}` : ""}
+            </p>
+          ) : null}
 
           {data.displayDescription ? (
             <p className="text-sm leading-5 text-zinc-300">{data.displayDescription}</p>
@@ -640,9 +658,220 @@ function InfraDetails({
             />
           </Field>
 
-          <Field label="Status">
-            <SegmentedControl value={status} options={STATUS_OPTIONS} onChange={(next) => patch({ status: next })} />
+          <Field label="Documented status">
+            <SegmentedControl
+              value={documentedStatus}
+              options={STATUS_OPTIONS}
+              onChange={(next) => patch({ status: next })}
+            />
           </Field>
+          {resolved.mode !== "manual" ? (
+            <div className="rounded-xl border border-[#2a2a2e] bg-[#0f0f12] px-3 py-2 text-[11px] text-zinc-400">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-zinc-200">
+                  Observed: {statusLabel(resolved.status)} ({resolved.mode})
+                </span>
+              </div>
+              {resolved.observation ? (
+                <p className="mt-1 leading-4">
+                  {new Date(resolved.observation.checkedAt).toLocaleString()}
+                  {resolved.observation.source ? ` · ${resolved.observation.source}` : ""}
+                  {resolved.observation.message ? ` — ${resolved.observation.message}` : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="rounded-xl border border-[#2a2a2e] bg-[#0f0f12] px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-medium text-zinc-200">Live status tracking</div>
+                <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
+                  Background health-runner probes HTTP/TCP. Use External for push-only (n8n/MCP).
+                </p>
+              </div>
+              <Switch
+                checked={Boolean(health?.enabled)}
+                onCheckedChange={(enabled) =>
+                  patch({
+                    health: {
+                      enabled,
+                      kind: health?.kind ?? "http",
+                      url: health?.url,
+                      expectStatus: health?.expectStatus ?? 200,
+                      intervalSec: health?.intervalSec ?? 60,
+                      staleAfterSec: health?.staleAfterSec ?? 300,
+                      alert: health?.alert,
+                    },
+                  })
+                }
+              />
+            </div>
+            {health?.enabled ? (
+              <div className="mt-3 space-y-3">
+                <Field label="Probe kind">
+                  <SegmentedControl
+                    value={health.kind}
+                    options={[
+                      { value: "http", label: "HTTP" },
+                      { value: "tcp", label: "TCP" },
+                      { value: "external", label: "External" },
+                    ]}
+                    onChange={(kind) => patch({ health: { ...health, kind } })}
+                  />
+                </Field>
+                <Field label="Health URL / target">
+                  <Input
+                    value={health.url ?? ""}
+                    placeholder={
+                      health.kind === "tcp" ? "db.example.com:5432" : "https://api.example.com/healthz"
+                    }
+                    onChange={(event) =>
+                      patch({ health: { ...health, url: event.target.value || undefined } })
+                    }
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Interval (sec)">
+                    <Input
+                      type="number"
+                      min={15}
+                      value={health.intervalSec ?? 60}
+                      onChange={(event) =>
+                        patch({
+                          health: {
+                            ...health,
+                            intervalSec: Number(event.target.value) || 60,
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Stale after (sec)">
+                    <Input
+                      type="number"
+                      min={30}
+                      value={health.staleAfterSec ?? 300}
+                      onChange={(event) =>
+                        patch({
+                          health: {
+                            ...health,
+                            staleAfterSec: Number(event.target.value) || 300,
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <div className="rounded-lg border border-[#242428] px-2.5 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-medium text-zinc-200">Email alerts</div>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        Notify after N failures inside a time window.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={Boolean(health.alert?.enabled)}
+                      onCheckedChange={(enabled) =>
+                        patch({
+                          health: {
+                            ...health,
+                            alert: {
+                              enabled,
+                              emails: health.alert?.emails,
+                              failCount: health.alert?.failCount ?? 3,
+                              windowSec: health.alert?.windowSec ?? 300,
+                              cooldownSec: health.alert?.cooldownSec ?? 3600,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  {health.alert?.enabled ? (
+                    <div className="mt-2 space-y-2">
+                      <Field label="Emails (comma-separated, blank = project owner)">
+                        <Input
+                          value={(health.alert.emails ?? []).join(", ")}
+                          placeholder="ops@company.com, oncall@company.com"
+                          onChange={(event) =>
+                            patch({
+                              health: {
+                                ...health,
+                                alert: {
+                                  ...health.alert!,
+                                  emails: event.target.value
+                                    .split(",")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                },
+                              },
+                            })
+                          }
+                        />
+                      </Field>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Field label="Failures">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={health.alert.failCount ?? 3}
+                            onChange={(event) =>
+                              patch({
+                                health: {
+                                  ...health,
+                                  alert: {
+                                    ...health.alert!,
+                                    failCount: Number(event.target.value) || 3,
+                                  },
+                                },
+                              })
+                            }
+                          />
+                        </Field>
+                        <Field label="Window (sec)">
+                          <Input
+                            type="number"
+                            min={60}
+                            value={health.alert.windowSec ?? 300}
+                            onChange={(event) =>
+                              patch({
+                                health: {
+                                  ...health,
+                                  alert: {
+                                    ...health.alert!,
+                                    windowSec: Number(event.target.value) || 300,
+                                  },
+                                },
+                              })
+                            }
+                          />
+                        </Field>
+                        <Field label="Cooldown (sec)">
+                          <Input
+                            type="number"
+                            min={60}
+                            value={health.alert.cooldownSec ?? 3600}
+                            onChange={(event) =>
+                              patch({
+                                health: {
+                                  ...health,
+                                  alert: {
+                                    ...health.alert!,
+                                    cooldownSec: Number(event.target.value) || 3600,
+                                  },
+                                },
+                              })
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <Field label="Lifecycle">
             <SegmentedControl
               value={lifecycle}

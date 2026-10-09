@@ -13,6 +13,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY apps/realtime/package.json apps/realtime/
+COPY apps/health-runner/package.json apps/health-runner/
 COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/
 

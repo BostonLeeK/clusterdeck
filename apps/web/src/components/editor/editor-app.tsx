@@ -60,6 +60,7 @@ import {
   DiagramPerspectiveProvider,
   type TagPerspectiveMode,
 } from "@/components/editor/diagram-perspective";
+import { LiveStatusProvider, useLiveStatus } from "@/components/editor/live-status";
 import { PerspectiveBar } from "@/components/editor/perspective-bar";
 import {
   CanvasContextMenu,
@@ -115,7 +116,9 @@ export function EditorApp(props: {
 }) {
   return (
     <ReactFlowProvider>
-      <EditorCanvas {...props} />
+      <LiveStatusProvider diagramId={props.diagramId} enabled={!props.forceReadOnly}>
+        <EditorCanvas {...props} />
+      </LiveStatusProvider>
     </ReactFlowProvider>
   );
 }
@@ -146,6 +149,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [presenceUser, setPresenceUser] = useState(props.user);
   const [mcpOn, setMcpOn] = useState(Boolean(props.mcpEnabled));
+  const liveStatus = useLiveStatus();
 
   function setLeftOpen(open: boolean) {
     setLeftPanel(open);
@@ -180,6 +184,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     user: presenceUser,
     forceReadOnly: props.forceReadOnly,
     shareToken: isPublic ? props.shareToken : undefined,
+    onHealthObservations: liveStatus.applyObservations,
   });
 
   const selected = sync.selected as Node | undefined;

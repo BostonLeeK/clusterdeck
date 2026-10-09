@@ -37,6 +37,7 @@ export const DOCS_NAV: DocNavItem[] = [
   { section: "Integrations", title: "Export & import", slug: ["export-import"] },
   { section: "Integrations", title: "AI diagram", slug: ["ai"] },
   { section: "Integrations", title: "MCP", slug: ["mcp"] },
+  { section: "Integrations", title: "Live status", slug: ["live-status"] },
 ];
 
 export function docsHref(slug: string[]) {

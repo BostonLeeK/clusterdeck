@@ -21,6 +21,7 @@ import type {
   NodeStatus,
   NoteNodeData,
   PortNodeData,
+  ResolvedLiveStatus,
 } from "@dataflow/shared";
 import {
   connectorHandleId,
@@ -34,6 +35,7 @@ import {
 import { NODE_ICONS, TECH_ICONS } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import { useDiagramPerspective } from "@/components/editor/diagram-perspective";
+import { useLiveStatus } from "@/components/editor/live-status";
 
 const INFRA_MIN_WIDTH = 200;
 const INFRA_MIN_HEIGHT = 72;
@@ -108,6 +110,16 @@ const STATUS_DOT: Record<NodeStatus, string> = {
   offline: "bg-red-400",
   unknown: "bg-zinc-500",
 };
+
+function statusTooltip(resolved: ResolvedLiveStatus) {
+  const base = `Status: ${resolved.status}`;
+  if (resolved.mode === "manual" || !resolved.observation) return `${base} (documented)`;
+  const when = new Date(resolved.observation.checkedAt).toLocaleString();
+  const source = resolved.observation.source ? ` · ${resolved.observation.source}` : "";
+  const message = resolved.observation.message ? ` — ${resolved.observation.message}` : "";
+  if (resolved.mode === "live") return `LIVE ${base}${source}\nChecked ${when}${message}`;
+  return `STALE ${base}${source}\nLast check ${when}${message}\nShowing documented status`;
+}
 
 function shapeClass(shape: NodeShape): string {
   switch (shape) {
@@ -208,9 +220,11 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
   const { setNodes } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const perspective = useDiagramPerspective();
+  const live = useLiveStatus();
   const typeMeta = nodeTypeById(node.typeId);
   const Icon = NODE_ICONS[node.typeId];
-  const status = node.status ?? "unknown";
+  const resolved = live.resolve(id, node.status ?? "unknown", node.health);
+  const status = resolved.status;
   const shape = resolveNodeShape(node);
   const scope = resolveNodeScope(node);
   const accent = resolveAccentColor(node);
@@ -361,6 +375,7 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
             </div>
           </div>
           <span
+            title={statusTooltip(resolved)}
             className={cn(
               "mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5",
               "bg-black/25",
@@ -370,10 +385,17 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
               className={cn(
                 "size-1.5 rounded-full",
                 STATUS_DOT[status],
-                status === "healthy" && "animate-status-pulse",
-                status === "degraded" && "animate-status-glow",
+                status === "healthy" && resolved.mode !== "stale" && "animate-status-pulse",
+                status === "degraded" && resolved.mode === "live" && "animate-status-glow",
+                resolved.mode === "stale" && "opacity-50",
               )}
             />
+            {resolved.mode === "live" ? (
+              <span className="text-[9px] font-semibold tracking-wide text-emerald-300/90">LIVE</span>
+            ) : null}
+            {resolved.mode === "stale" ? (
+              <span className="text-[9px] font-semibold tracking-wide text-zinc-500">STALE</span>
+            ) : null}
           </span>
         </div>
         {node.displayDescription ? (

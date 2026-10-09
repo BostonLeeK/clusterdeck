@@ -50,3 +50,4 @@ See [Canvas overview](/docs/editor) and [Nodes](/docs/editor/nodes).
 | Nested drill-down | [Nested diagrams](/docs/editor/nested) |
 | Move diagrams between environments | [Export & import](/docs/export-import) |
 | Automate from tools | [MCP](/docs/mcp) |
+| Show live health on the canvas | [Live status](/docs/live-status) |

@@ -12,12 +12,14 @@ Typical MCP capabilities (when enabled for your project):
 - **List diagrams** — discover diagram ids and titles
 - **Get diagram** — fetch a full snapshot (`nodes`, `edges`, `meta`)
 - **Update diagram** — upsert/delete nodes and edges; update meta (tags, flows)
+- **Set / list node status** — push or read observed live health (TTL overlay; see [Live status](/docs/live-status))
 
 Use this for:
 
 - Generating or patching architecture from a coding agent
 - Keeping diagrams in sync with infra-as-code reviews
 - Bulk retitling, tagging, or wiring documented connectors
+- Pushing probe results from n8n / cron without rewriting diagram history
 
 ## Safety rules
 

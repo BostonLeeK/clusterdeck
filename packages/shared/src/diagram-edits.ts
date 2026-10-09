@@ -16,6 +16,9 @@ import {
   type NodeConnector,
   type NodeLifecycle,
   type NodeProperty,
+  type NodeHealthAlert,
+  type NodeHealthConfig,
+  type NodeHealthKind,
   type NodeScope,
   type NodeShape,
   type NodeStatus,
@@ -57,6 +60,7 @@ export interface NodeInput {
   lifecycle?: NodeLifecycle;
   technologies?: string[];
   accentColor?: string | null;
+  health?: NodeHealthConfig | null;
   properties?: PropertyInput[];
   connectors?: ConnectorInput[];
   body?: string;
@@ -134,6 +138,64 @@ function normalizeProperties(properties: PropertyInput[] | undefined): NodePrope
   );
 }
 
+function normalizeAlert(alert: NodeHealthAlert | undefined): NodeHealthAlert | undefined {
+  if (!alert) return undefined;
+  const emails = (alert.emails ?? [])
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item))
+    .slice(0, 10);
+  const failCount =
+    typeof alert.failCount === "number" && alert.failCount > 0
+      ? Math.min(Math.floor(alert.failCount), 50)
+      : 3;
+  const windowSec =
+    typeof alert.windowSec === "number" && alert.windowSec > 0
+      ? Math.min(Math.floor(alert.windowSec), 86_400)
+      : 300;
+  const cooldownSec =
+    typeof alert.cooldownSec === "number" && alert.cooldownSec > 0
+      ? Math.min(Math.floor(alert.cooldownSec), 604_800)
+      : 3600;
+  return {
+    enabled: Boolean(alert.enabled),
+    emails: emails.length ? emails : undefined,
+    failCount,
+    windowSec,
+    cooldownSec,
+  };
+}
+
+function normalizeHealth(health: NodeHealthConfig | null | undefined): NodeHealthConfig | null | undefined {
+  if (health === undefined) return undefined;
+  if (health === null) return null;
+  const kind = (["http", "tcp", "external"] as NodeHealthKind[]).includes(health.kind)
+    ? health.kind
+    : ("external" as NodeHealthKind);
+  const url = health.url?.trim() || undefined;
+  const expectStatus =
+    typeof health.expectStatus === "number" && health.expectStatus >= 100 && health.expectStatus < 600
+      ? Math.floor(health.expectStatus)
+      : undefined;
+  const intervalSec =
+    typeof health.intervalSec === "number" && health.intervalSec > 0
+      ? Math.min(Math.floor(health.intervalSec), 86_400)
+      : undefined;
+  const staleAfterSec =
+    typeof health.staleAfterSec === "number" && health.staleAfterSec > 0
+      ? Math.min(Math.floor(health.staleAfterSec), 86_400)
+      : undefined;
+  const alert = normalizeAlert(health.alert);
+  return {
+    enabled: Boolean(health.enabled),
+    kind,
+    url,
+    expectStatus,
+    intervalSec,
+    staleAfterSec,
+    ...(alert ? { alert } : {}),
+  };
+}
+
 function applyFrame(node: DiagramNode, input: NodeInput): DiagramNode {
   const next = { ...node };
   if (input.position) next.position = { x: input.position.x, y: input.position.y };
@@ -170,6 +232,7 @@ function createNode(id: string, input: NodeInput): DiagramNode {
         shape: input.shape,
         scope: input.scope,
         lifecycle: input.lifecycle,
+        health: normalizeHealth(input.health) ?? undefined,
         technologies: input.technologies,
         accentColor: input.accentColor ?? undefined,
         properties: normalizeProperties(input.properties),
@@ -226,6 +289,7 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
   const properties = normalizeProperties(input.properties);
   if (existing.data.kind === "infra") {
     const typeId = input.typeId ? infraTypeId(input.typeId) : existing.data.typeId;
+    const health = normalizeHealth(input.health);
     next.data = {
       ...existing.data,
       typeId,
@@ -244,8 +308,10 @@ function mergeNode(existing: DiagramNode, input: NodeInput): DiagramNode {
         : {}),
       ...(properties !== undefined ? { properties } : {}),
       ...(connectors !== undefined ? { connectors } : {}),
+      ...(health !== undefined ? { health: health ?? undefined } : {}),
     };
     if (input.accentColor === null) delete (next.data as { accentColor?: string }).accentColor;
+    if (health === null) delete (next.data as { health?: NodeHealthConfig }).health;
     return next;
   }
   if (existing.data.kind === "group") {

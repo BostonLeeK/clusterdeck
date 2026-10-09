@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter web --filter realtime dev",
+    "dev": "pnpm --parallel --filter web --filter realtime --filter health-runner dev",
     "build": "pnpm --recursive build",
     "lint": "pnpm --recursive lint",
     "typecheck": "pnpm --recursive typecheck",

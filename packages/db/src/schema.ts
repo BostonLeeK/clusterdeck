@@ -224,6 +224,38 @@ export const diagramHistory = dataflow.table("diagram_history", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+export const diagramNodeObservations = dataflow.table(
+  "diagram_node_observations",
+  {
+    diagramId: text("diagram_id")
+      .notNull()
+      .references(() => diagrams.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    status: text("status").notNull().$type<"healthy" | "degraded" | "unknown" | "offline">(),
+    checkedAt: timestamp("checked_at", { mode: "date" }).notNull().defaultNow(),
+    source: text("source").notNull().default("external"),
+    message: text("message"),
+    staleAfterSec: integer("stale_after_sec").notNull().default(300),
+  },
+  (table) => [primaryKey({ columns: [table.diagramId, table.nodeId] })],
+);
+
+export const healthCheckRuntime = dataflow.table(
+  "health_check_runtime",
+  {
+    diagramId: text("diagram_id")
+      .notNull()
+      .references(() => diagrams.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    failureTimes: jsonb("failure_times").$type<string[]>().notNull().default([]),
+    lastOkAt: timestamp("last_ok_at", { mode: "date" }),
+    lastAlertAt: timestamp("last_alert_at", { mode: "date" }),
+    lastProbeAt: timestamp("last_probe_at", { mode: "date" }),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.diagramId, table.nodeId] })],
+);
+
 export const schema = {
   users,
   accounts,
@@ -239,4 +271,6 @@ export const schema = {
   diagrams,
   projectTemplates,
   diagramHistory,
+  diagramNodeObservations,
+  healthCheckRuntime,
 };
