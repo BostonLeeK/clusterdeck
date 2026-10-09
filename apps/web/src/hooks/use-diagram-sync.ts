@@ -43,7 +43,13 @@ import {
   type FlowEdgeData,
 } from "@/lib/diagram";
 import { resolveRealtimeUrl } from "@/lib/realtime-url";
-import { recordHistory, redoHistory, restoreHistory, undoHistory } from "@/lib/history";
+import {
+  recordHistory,
+  redoHistory,
+  restoreHistory,
+  restoreToSnapshot,
+  undoHistory,
+} from "@/lib/history";
 import { cloneInnerDiagrams, issueRealtimeToken, saveDiagramSnapshot } from "@/actions/diagrams";
 
 export type PresenceUser = {
@@ -932,6 +938,16 @@ export function useDiagramSync(opts: {
     [opts.diagramId, readOnly, showSnapshot],
   );
 
+  const restoreSnapshot = useCallback(
+    (snapshot: DiagramSnapshot, label: string) => {
+      if (readOnly) return;
+      const current = snapshotFromDoc(docRef.current);
+      restoreToSnapshot(opts.diagramId, current, snapshot, label);
+      showSnapshot(snapshot);
+    },
+    [opts.diagramId, readOnly, showSnapshot],
+  );
+
   const selected = useMemo(() => nodes.find((node) => node.selected), [nodes]);
   const selectedEdge = useMemo(() => edges.find((edge) => edge.selected), [edges]);
 
@@ -974,6 +990,7 @@ export function useDiagramSync(opts: {
     undo,
     redo,
     restore,
+    restoreSnapshot,
     flushPersistence: () => {
       if (persistTimer.current) {
         clearTimeout(persistTimer.current);

@@ -197,3 +197,71 @@ export async function deleteWorkspace(workspaceId: string) {
   revalidatePath("/projects");
   return { ok: true as const };
 }
+
+export async function renameWorkspace(workspaceId: string, name: string) {
+  const gate = await requireWorkspaceManager(workspaceId);
+  if (gate.error) return { error: gate.error };
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Name is required." };
+  await db.update(workspaces).set({ name: trimmed }).where(eq(workspaces.id, workspaceId));
+  revalidatePath("/projects");
+  return { ok: true as const, name: trimmed };
+}
+
+export async function leaveWorkspace(workspaceId: string) {
+  const user = await requireUser();
+  const [membership] = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)))
+    .limit(1);
+  if (!membership) return { error: "You are not a member of this team." };
+  if (membership.role === "owner") {
+    return { error: "Transfer ownership or delete the team before leaving." };
+  }
+
+  await db
+    .delete(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)));
+
+  if (user.email) {
+    await db
+      .delete(workspaceInvites)
+      .where(and(eq(workspaceInvites.workspaceId, workspaceId), eq(workspaceInvites.email, user.email)));
+  }
+
+  revalidatePath("/projects");
+  return { ok: true as const };
+}
+
+export async function transferWorkspaceOwnership(workspaceId: string, newOwnerId: string) {
+  const user = await requireUser();
+  const [membership] = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)))
+    .limit(1);
+  if (!membership || membership.role !== "owner") {
+    return { error: "Only the team owner can transfer ownership." };
+  }
+  if (newOwnerId === user.id) return { error: "You are already the team owner." };
+
+  const [target] = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, newOwnerId)))
+    .limit(1);
+  if (!target) return { error: "That person is not a member of this team." };
+
+  await db
+    .update(workspaceMembers)
+    .set({ role: "admin" })
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)));
+  await db
+    .update(workspaceMembers)
+    .set({ role: "owner" })
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, newOwnerId)));
+
+  revalidatePath("/projects");
+  return { ok: true as const };
+}

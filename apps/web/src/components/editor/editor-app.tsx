@@ -39,7 +39,11 @@ import type {
   MemberRole,
 } from "@dataflow/shared";
 import { ACCENT_SWATCHES, createInfraNodeData, hashTagColor } from "@dataflow/shared";
-import { createContainerDiagram, openOrCreateInnerDiagram } from "@/actions/diagrams";
+import {
+  createContainerDiagram,
+  openOrCreateInnerDiagram,
+  resolveInnerDiagram,
+} from "@/actions/diagrams";
 import { setProjectMcpEnabled } from "@/actions/mcp";
 import { Logo } from "@/components/logo";
 import { ExportMenu } from "@/components/editor/export-menu";
@@ -427,12 +431,35 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
     sync.commitNodes(ungroupNode(sync.nodes, group.id));
   }, [sync]);
 
+  const publicHref = useCallback(
+    (diagramId: string) =>
+      diagramId === props.trail[0]?.id
+        ? `/p/${props.shareToken}`
+        : `/p/${props.shareToken}/${diagramId}`,
+    [props.shareToken, props.trail],
+  );
+
   const openInner = useCallback(
     async (nodeId?: string) => {
       const id = nodeId ?? selected?.id;
       const node = sync.nodes.find((item) => item.id === id);
       if (!node || node.type !== "infra") return;
       const data = node.data as InfraNodeData;
+
+      if (isPublic) {
+        try {
+          const result = await resolveInnerDiagram(props.diagramId, node.id, props.shareToken);
+          if (!result.diagramId) {
+            toast("No nested diagram inside this node", "default");
+            return;
+          }
+          router.push(publicHref(result.diagramId));
+        } catch {
+          toast("Couldn’t open nested diagram", "error");
+        }
+        return;
+      }
+
       const result = await openOrCreateInnerDiagram(props.diagramId, node.id);
       if (
         !sync.readOnly &&
@@ -448,8 +475,11 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
       router.push(`/editor/${props.projectId}/${result.diagramId}`);
     },
     [
+      isPublic,
       props.diagramId,
       props.projectId,
+      props.shareToken,
+      publicHref,
       router,
       selected?.id,
       sync.nodes,
@@ -667,47 +697,60 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           >
             <Logo showName={false} className="gap-0" />
           </Link>
-          {!isPublic ? (
+          {props.trail.length > 1 || !isPublic ? (
             <button
               type="button"
-              title={props.trail.length > 1 ? "Up one level" : "Back to projects"}
+              title={
+                props.trail.length > 1
+                  ? "Up one level"
+                  : isPublic
+                    ? "View only"
+                    : "Back to projects"
+              }
               className="mr-1 grid size-7 shrink-0 place-items-center rounded-lg hover:bg-white/5"
               onClick={() => {
                 if (props.trail.length > 1) {
                   const parent = props.trail[props.trail.length - 2];
-                  if (parent) leaveTo(`/editor/${props.projectId}/${parent.id}`);
+                  if (!parent) return;
+                  leaveTo(isPublic ? publicHref(parent.id) : `/editor/${props.projectId}/${parent.id}`);
                   return;
                 }
-                leaveTo("/projects");
+                if (!isPublic) leaveTo("/projects");
               }}
             >
               <ArrowLeft className="size-4" />
             </button>
           ) : null}
-          <span
-            className={`min-w-0 truncate text-zinc-200 sm:shrink-0 ${
-              !isPublic && props.trail.length > 1 ? "hidden sm:inline" : ""
+          <button
+            type="button"
+            className={`min-w-0 truncate text-left text-zinc-200 sm:shrink-0 ${
+              props.trail.length > 1 ? "hidden sm:inline hover:text-zinc-300" : ""
             }`}
+            onClick={() => {
+              const root = props.trail[0];
+              if (!root) return;
+              leaveTo(isPublic ? publicHref(root.id) : `/editor/${props.projectId}/${root.id}`);
+            }}
           >
             {props.projectName}
-          </span>
-          {!isPublic
-            ? props.trail.slice(1).map((item, index, items) => (
-                <span
-                  key={item.id}
-                  className={`min-w-0 items-center ${index === items.length - 1 ? "flex" : "hidden sm:flex"}`}
-                >
-                  <span className="mx-1.5 hidden shrink-0 text-zinc-600 sm:inline">›</span>
-                  <button
-                    type="button"
-                    className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
-                    onClick={() => leaveTo(`/editor/${props.projectId}/${item.id}`)}
-                  >
-                    {item.name}
-                  </button>
-                </span>
-              ))
-            : null}
+          </button>
+          {props.trail.slice(1).map((item, index, items) => (
+            <span
+              key={item.id}
+              className={`min-w-0 items-center ${index === items.length - 1 ? "flex" : "hidden sm:flex"}`}
+            >
+              <span className="mx-1.5 hidden shrink-0 text-zinc-600 sm:inline">›</span>
+              <button
+                type="button"
+                className={`truncate ${index === items.length - 1 ? "text-white" : "hover:text-zinc-300"}`}
+                onClick={() =>
+                  leaveTo(isPublic ? publicHref(item.id) : `/editor/${props.projectId}/${item.id}`)
+                }
+              >
+                {item.name}
+              </button>
+            </span>
+          ))}
           {isPublic ? <span className="ml-2 shrink-0 text-xs text-zinc-500">View only</span> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -776,7 +819,12 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
           ) : (
             <>
               <div className="hidden sm:contents">
-                <HistoryMenu diagramId={props.diagramId} readOnly={sync.readOnly} onRestore={sync.restore} />
+                <HistoryMenu
+                  diagramId={props.diagramId}
+                  readOnly={sync.readOnly}
+                  onRestoreLocal={sync.restore}
+                  onRestoreSnapshot={sync.restoreSnapshot}
+                />
               </div>
               <ShareDialog
                 projectId={props.projectId}
@@ -888,7 +936,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
               </div>
             )
           ) : null}
-          {props.insideLabel && !isPublic ? (
+          {props.insideLabel ? (
             <div className="absolute top-3 left-16 z-10 inline-flex items-center gap-2 rounded-full border border-[#2a2a2e] bg-[#141416] px-3 py-1 text-xs text-zinc-300 max-md:top-14 max-md:left-3">
               Inside: {props.insideLabel}
             </div>
@@ -997,8 +1045,7 @@ function EditorCanvas(props: Parameters<typeof EditorApp>[0]) {
                 event.dataTransfer.dropEffect = "move";
               }}
               onNodeDoubleClick={(_, node) => {
-                if (isPublic) return;
-                if (node.type === "infra") void openInner();
+                if (node.type === "infra") void openInner(node.id);
               }}
               minZoom={0.01}
               maxZoom={4}

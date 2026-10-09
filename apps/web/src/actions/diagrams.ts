@@ -2,9 +2,34 @@
 
 import { SignJWT } from "jose";
 import { and, eq } from "drizzle-orm";
-import { db, diagrams } from "@dataflow/db";
-import { canEdit, emptySnapshot, type DiagramSnapshot, type InfraNodeData, type MemberRole } from "@dataflow/shared";
+import {
+  appendDiagramHistory,
+  db,
+  diagrams,
+  getDiagramHistorySnapshot,
+  listDiagramHistoryRows,
+  users,
+} from "@dataflow/db";
+import {
+  canEdit,
+  emptySnapshot,
+  isDiagramBundle,
+  isFlatSnapshot,
+  type DiagramBundle,
+  type DiagramBundleChild,
+  type DiagramSnapshot,
+  type InfraNodeData,
+  type MemberRole,
+} from "@dataflow/shared";
 import { auth } from "@/lib/auth";
+import {
+  buildBundleChildrenFromSnapshot,
+  buildDiagramBundle,
+  innerContentCount,
+  materializeDiagramBundle,
+  MAX_CLONE_DEPTH,
+  type InnerDiagramLink,
+} from "@/lib/diagram-tree";
 import { getAccess, getDiagramWithTrail, getPublicProject, requireUser } from "@/lib/queries";
 
 const secret = new TextEncoder().encode(process.env.REALTIME_SECRET ?? "dev-realtime-secret");
@@ -59,14 +84,54 @@ export async function saveDiagramSnapshot(diagramId: string, snapshot: DiagramSn
   if (!bundle) throw new Error("not found");
   const access = await getAccess(bundle.diagram.projectId, user.id);
   if (!access || !canEdit(access.role)) throw new Error("forbidden");
+  const previous = bundle.diagram.snapshot;
   await db
     .update(diagrams)
     .set({ snapshot, updatedAt: new Date() })
     .where(eq(diagrams.id, diagramId));
+  await appendDiagramHistory({
+    diagramId,
+    projectId: bundle.diagram.projectId,
+    userId: user.id,
+    snapshot,
+    previous,
+  });
 }
 
-function innerContentCount(snapshot: DiagramSnapshot) {
-  return snapshot.nodes.filter((node) => node.type !== "port").length;
+export async function listDiagramHistory(diagramId: string) {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access) throw new Error("forbidden");
+  const rows = await listDiagramHistoryRows(diagramId);
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.userId || names.has(row.userId)) continue;
+    const [person] = await db
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, row.userId))
+      .limit(1);
+    names.set(row.userId, person?.name ?? person?.email ?? "Someone");
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    at: row.createdAt.getTime(),
+    userName: row.userId ? names.get(row.userId) ?? null : null,
+  }));
+}
+
+export async function getDiagramHistoryEntry(diagramId: string, entryId: string) {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access || !canEdit(access.role)) throw new Error("forbidden");
+  const row = await getDiagramHistorySnapshot(diagramId, entryId);
+  if (!row) throw new Error("not found");
+  return { id: row.id, label: row.label, snapshot: row.snapshot, at: row.createdAt.getTime() };
 }
 
 function pickInnerDiagram<T extends { snapshot: DiagramSnapshot; createdAt: Date }>(rows: T[]) {
@@ -95,14 +160,11 @@ async function linkInnerDiagram(
   await db.update(diagrams).set({ snapshot: nextSnapshot }).where(eq(diagrams.id, diagramId));
 }
 
-export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string) {
-  const user = await requireUser();
+async function findInnerDiagram(diagramId: string, nodeId: string) {
   const bundle = await getDiagramWithTrail(diagramId);
-  if (!bundle) throw new Error("not found");
-  const access = await getAccess(bundle.diagram.projectId, user.id);
-  if (!access) throw new Error("forbidden");
+  if (!bundle) return null;
   const node = bundle.diagram.snapshot.nodes.find((item) => item.id === nodeId);
-  if (!node || node.data.kind !== "infra") throw new Error("invalid node");
+  if (!node || node.data.kind !== "infra") return null;
   const data = node.data as InfraNodeData;
 
   const children = await db
@@ -111,32 +173,91 @@ export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string
     .where(and(eq(diagrams.parentDiagramId, diagramId), eq(diagrams.parentNodeId, nodeId)));
   const chosen = pickInnerDiagram(children);
   if (chosen) {
-    const nodeCount = innerContentCount(chosen.snapshot);
-    if (data.childDiagramId !== chosen.id) {
-      await linkInnerDiagram(diagramId, bundle.diagram.snapshot, nodeId, chosen.id, nodeCount);
+    return {
+      diagramId: chosen.id,
+      nodeCount: innerContentCount(chosen.snapshot),
+      node,
+      data,
+      bundle,
+      needsLink: data.childDiagramId !== chosen.id,
+    };
+  }
+  if (data.childDiagramId) {
+    const [byId] = await db
+      .select()
+      .from(diagrams)
+      .where(and(eq(diagrams.id, data.childDiagramId), eq(diagrams.projectId, bundle.diagram.projectId)))
+      .limit(1);
+    if (byId) {
+      return {
+        diagramId: byId.id,
+        nodeCount: innerContentCount(byId.snapshot),
+        node,
+        data,
+        bundle,
+        needsLink: false,
+      };
     }
-    return { diagramId: chosen.id, nodeCount };
+  }
+  return { diagramId: null as string | null, nodeCount: 0, node, data, bundle, needsLink: false };
+}
+
+export async function openOrCreateInnerDiagram(diagramId: string, nodeId: string) {
+  const user = await requireUser();
+  const found = await findInnerDiagram(diagramId, nodeId);
+  if (!found) throw new Error("not found");
+  const access = await getAccess(found.bundle.diagram.projectId, user.id);
+  if (!access) throw new Error("forbidden");
+
+  if (found.diagramId) {
+    if (found.needsLink) {
+      await linkInnerDiagram(
+        diagramId,
+        found.bundle.diagram.snapshot,
+        nodeId,
+        found.diagramId,
+        found.nodeCount,
+      );
+    }
+    return { diagramId: found.diagramId, nodeCount: found.nodeCount };
   }
 
   const [created] = await db
     .insert(diagrams)
     .values({
-      projectId: bundle.diagram.projectId,
+      projectId: found.bundle.diagram.projectId,
       parentDiagramId: diagramId,
       parentNodeId: nodeId,
-      name: data.title,
+      name: found.data.title,
       snapshot: emptySnapshot(),
     })
     .returning();
   if (!created) throw new Error("failed");
-  await linkInnerDiagram(diagramId, bundle.diagram.snapshot, nodeId, created.id, 0);
+  await linkInnerDiagram(diagramId, found.bundle.diagram.snapshot, nodeId, created.id, 0);
   return { diagramId: created.id, nodeCount: 0 };
 }
 
-type DiagramRow = typeof diagrams.$inferSelect;
-type InnerDiagramLink = { diagramId: string; nodeCount: number };
+export async function resolveInnerDiagram(diagramId: string, nodeId: string, shareToken?: string) {
+  const session = await auth();
+  if (session?.user?.id) {
+    const user = await requireUser();
+    const found = await findInnerDiagram(diagramId, nodeId);
+    if (!found?.diagramId) return { diagramId: null as string | null, nodeCount: 0 };
+    const access = await getAccess(found.bundle.diagram.projectId, user.id);
+    if (!access) throw new Error("forbidden");
+    return { diagramId: found.diagramId, nodeCount: found.nodeCount };
+  }
 
-const MAX_CLONE_DEPTH = 12;
+  if (!shareToken) throw new Error("forbidden");
+  const data = await getPublicProject(shareToken);
+  if (!data?.root || data.project.linkAccess !== "view") throw new Error("forbidden");
+  const found = await findInnerDiagram(diagramId, nodeId);
+  if (!found?.diagramId) return { diagramId: null as string | null, nodeCount: 0 };
+  if (found.bundle.diagram.projectId !== data.project.id) throw new Error("forbidden");
+  return { diagramId: found.diagramId, nodeCount: found.nodeCount };
+}
+
+type DiagramRow = typeof diagrams.$inferSelect;
 
 async function cloneDiagramTree(
   source: Pick<DiagramRow, "id" | "name" | "snapshot">,
@@ -251,43 +372,7 @@ export async function listInnerNodes(childDiagramId: string): Promise<InnerNodeO
   return connectableNodes(bundle.diagram.snapshot);
 }
 
-export type DiagramBundleChild = {
-  parentNodeId: string;
-  name: string;
-  snapshot: DiagramSnapshot;
-  children: DiagramBundleChild[];
-};
-
-export type DiagramBundle = {
-  version: 1;
-  name: string;
-  snapshot: DiagramSnapshot;
-  children: DiagramBundleChild[];
-};
-
-async function buildBundleChildrenFromSnapshot(
-  snapshot: DiagramSnapshot,
-  depth = 0,
-): Promise<DiagramBundleChild[]> {
-  if (depth >= MAX_CLONE_DEPTH) return [];
-  const children: DiagramBundleChild[] = [];
-  const seen = new Set<string>();
-
-  for (const node of snapshot.nodes) {
-    if (node.data.kind !== "infra" || !node.data.childDiagramId) continue;
-    if (seen.has(node.id)) continue;
-    seen.add(node.id);
-    const [row] = await db.select().from(diagrams).where(eq(diagrams.id, node.data.childDiagramId)).limit(1);
-    if (!row) continue;
-    children.push({
-      parentNodeId: node.id,
-      name: row.name,
-      snapshot: row.snapshot,
-      children: await buildBundleChildrenFromSnapshot(row.snapshot, depth + 1),
-    });
-  }
-  return children;
-}
+export type { DiagramBundle, DiagramBundleChild };
 
 export async function exportDiagramBundle(
   diagramId: string,
@@ -300,104 +385,7 @@ export async function exportDiagramBundle(
   if (!access) throw new Error("forbidden");
 
   const snapshot = rootSnapshot ?? bundle.diagram.snapshot;
-  return {
-    version: 1,
-    name: bundle.diagram.name,
-    snapshot,
-    children: await buildBundleChildrenFromSnapshot(snapshot),
-  };
-}
-
-async function deleteChildDiagramTrees(parentDiagramId: string) {
-  const children = await db
-    .select({ id: diagrams.id })
-    .from(diagrams)
-    .where(eq(diagrams.parentDiagramId, parentDiagramId));
-  for (const child of children) {
-    await deleteChildDiagramTrees(child.id);
-    await db.delete(diagrams).where(eq(diagrams.id, child.id));
-  }
-}
-
-async function materializeBundleChildren(
-  projectId: string,
-  parentDiagramId: string,
-  children: DiagramBundleChild[],
-  depth = 0,
-): Promise<Map<string, InnerDiagramLink>> {
-  const links = new Map<string, InnerDiagramLink>();
-  if (depth >= MAX_CLONE_DEPTH) return links;
-
-  for (const child of children) {
-    const [created] = await db
-      .insert(diagrams)
-      .values({
-        projectId,
-        parentDiagramId,
-        parentNodeId: child.parentNodeId,
-        name: child.name,
-        snapshot: child.snapshot,
-      })
-      .returning({ id: diagrams.id });
-    if (!created) continue;
-
-    const nested = await materializeBundleChildren(projectId, created.id, child.children, depth + 1);
-    let snapshot = child.snapshot;
-    if (nested.size) {
-      snapshot = {
-        ...child.snapshot,
-        nodes: child.snapshot.nodes.map((node) => {
-          if (node.data.kind !== "infra") return node;
-          const link = nested.get(node.id);
-          if (!link) {
-            return node.data.childDiagramId
-              ? { ...node, data: { ...node.data, childDiagramId: undefined } }
-              : node;
-          }
-          return {
-            ...node,
-            data: { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount },
-          };
-        }),
-      };
-      await db.update(diagrams).set({ snapshot, ydocState: null }).where(eq(diagrams.id, created.id));
-    } else if (child.snapshot.nodes.some((node) => node.data.kind === "infra" && node.data.childDiagramId)) {
-      snapshot = {
-        ...child.snapshot,
-        nodes: child.snapshot.nodes.map((node) =>
-          node.data.kind === "infra" && node.data.childDiagramId
-            ? { ...node, data: { ...node.data, childDiagramId: undefined } }
-            : node,
-        ),
-      };
-      await db.update(diagrams).set({ snapshot, ydocState: null }).where(eq(diagrams.id, created.id));
-    }
-
-    links.set(child.parentNodeId, {
-      diagramId: created.id,
-      nodeCount: innerContentCount(snapshot),
-    });
-  }
-  return links;
-}
-
-function isDiagramBundle(value: unknown): value is DiagramBundle {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Record<string, unknown>;
-  return (
-    row.version === 1 &&
-    row.snapshot != null &&
-    typeof row.snapshot === "object" &&
-    Array.isArray((row.snapshot as DiagramSnapshot).nodes) &&
-    Array.isArray((row.snapshot as DiagramSnapshot).edges) &&
-    Array.isArray(row.children)
-  );
-}
-
-function isFlatSnapshot(value: unknown): value is DiagramSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Record<string, unknown>;
-  return Array.isArray(row.nodes) && Array.isArray(row.edges) && row.version !== 1;
+  return buildDiagramBundle(bundle.diagram.name, snapshot);
 }
 
 async function expandFlatSnapshotToChildren(
@@ -436,44 +424,20 @@ export async function importDiagramJson(
 
   const projectId = bundle.diagram.projectId;
 
-  let rootSnapshot: DiagramSnapshot;
-  let children: DiagramBundleChild[];
+  let next: DiagramBundle;
 
   if (isDiagramBundle(payload)) {
-    rootSnapshot = payload.snapshot;
-    children = payload.children;
+    next = payload;
   } else if (isFlatSnapshot(payload)) {
-    rootSnapshot = payload;
-    children = await expandFlatSnapshotToChildren(user.id, projectId, payload);
+    next = {
+      version: 1,
+      name: bundle.diagram.name,
+      snapshot: payload,
+      children: await expandFlatSnapshotToChildren(user.id, projectId, payload),
+    };
   } else {
     throw new Error("invalid diagram json");
   }
 
-  await deleteChildDiagramTrees(diagramId);
-  const links = await materializeBundleChildren(projectId, diagramId, children);
-
-  const nextSnapshot: DiagramSnapshot = {
-    ...rootSnapshot,
-    nodes: rootSnapshot.nodes.map((node) => {
-      if (node.data.kind !== "infra") return node;
-      const link = links.get(node.id);
-      if (link) {
-        return {
-          ...node,
-          data: { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount },
-        };
-      }
-      if (node.data.childDiagramId) {
-        return { ...node, data: { ...node.data, childDiagramId: undefined } };
-      }
-      return node;
-    }),
-  };
-
-  await db
-    .update(diagrams)
-    .set({ snapshot: nextSnapshot, ydocState: null, updatedAt: new Date() })
-    .where(eq(diagrams.id, diagramId));
-
-  return nextSnapshot;
+  return materializeDiagramBundle(projectId, diagramId, next);
 }

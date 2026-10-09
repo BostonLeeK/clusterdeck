@@ -20,12 +20,19 @@ import {
   X,
 } from "lucide-react";
 import { logout, updateProfileName } from "@/actions/auth";
-import { deleteProjectForever, restoreProject, trashProject } from "@/actions/projects";
+import {
+  deleteProjectForever,
+  deleteProjectTemplate,
+  duplicateProject,
+  restoreProject,
+  trashProject,
+} from "@/actions/projects";
 import { McpTokenDialog } from "@/components/projects/mcp-token-dialog";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { DiagramPreview } from "@/components/projects/diagram-preview";
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import { OpenAiKeySettings } from "@/components/projects/openai-key-settings";
+import { SaveTemplateDialog } from "@/components/projects/save-template-dialog";
 import { TeamManageDialog } from "@/components/projects/team-manage-dialog";
 import { WorkspaceSwitcher } from "@/components/projects/workspace-switcher";
 import { Logo } from "@/components/logo";
@@ -35,6 +42,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Modal, ModalContent } from "@/components/ui/modal";
 import { FormSelect } from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/utils";
 import { PROJECT_TEMPLATES, type DiagramSnapshot, type WorkspaceRole } from "@dataflow/shared";
 
@@ -43,6 +51,7 @@ type ProjectCard = {
   name: string;
   description: string;
   kind: "personal" | "shared";
+  workspaceId?: string | null;
   updatedAt: Date;
   deletedAt: Date | null;
   rootDiagramId?: string;
@@ -51,10 +60,21 @@ type ProjectCard = {
   members: { id: string; name: string | null; email: string | null; image: string | null }[];
 };
 
+type UserTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  snapshot: DiagramSnapshot;
+  workspaceId: string | null;
+  owned: boolean;
+};
+
 export function ProjectsShell({
   user,
   workspaces,
   projects,
+  userTemplates,
   filter,
   workspaceId,
   team,
@@ -62,6 +82,7 @@ export function ProjectsShell({
   user: { name?: string | null; email?: string | null; image?: string | null };
   workspaces: { id: string; name: string; role: WorkspaceRole }[];
   projects: ProjectCard[];
+  userTemplates: UserTemplate[];
   filter: string;
   workspaceId?: string;
   team: {
@@ -271,6 +292,7 @@ export function ProjectsShell({
             ) : null}
             <CreateProjectButton
               workspaceId={filter === "team" ? workspaceId : undefined}
+              userTemplates={userTemplates}
               triggerClassName="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-medium text-white hover:bg-[#6b74fb] sm:px-4"
             >
               <Plus className="size-4" />
@@ -355,16 +377,42 @@ export function ProjectsShell({
           )}
 
           {filter !== "templates" && projects.length === 0 ? (
-            <EmptyProjects filter={filter} workspaceId={workspaceId} />
+            <EmptyProjects filter={filter} workspaceId={workspaceId} userTemplates={userTemplates} />
           ) : (
           <div className={layout === "grid" ? "grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
             {filter === "templates"
-              ? PROJECT_TEMPLATES.map((template) => (
-                  <article key={template.id} className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
+              ? [
+                  ...PROJECT_TEMPLATES.map((template) => ({
+                    key: template.id,
+                    id: template.id,
+                    name: template.name,
+                    description: template.description,
+                    tags: template.tags,
+                    snapshot: template.snapshot,
+                    owned: false,
+                    builtin: true,
+                  })),
+                  ...userTemplates.map((template) => ({
+                    key: `user:${template.id}`,
+                    id: `user:${template.id}`,
+                    name: template.name,
+                    description: template.description,
+                    tags: template.tags,
+                    snapshot: template.snapshot,
+                    owned: template.owned,
+                    builtin: false,
+                  })),
+                ].map((template) => (
+                  <article key={template.key} className="flex h-full flex-col rounded-2xl border border-border bg-card p-4">
                     <div className="overflow-hidden rounded-xl bg-surface p-3">
                       <DiagramPreview snapshot={template.snapshot} />
                     </div>
-                    <h2 className="mt-3 text-[15px] font-medium">{template.name}</h2>
+                    <div className="mt-3 flex items-start justify-between gap-2">
+                      <h2 className="min-w-0 truncate text-[15px] font-medium">{template.name}</h2>
+                      <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-zinc-500">
+                        {template.builtin ? "Built-in" : template.owned ? "Yours" : "Team"}
+                      </span>
+                    </div>
                     <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">{template.description}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {template.tags.map((tag) => (
@@ -373,14 +421,33 @@ export function ProjectsShell({
                         </span>
                       ))}
                     </div>
-                    <div className="mt-auto pt-4">
+                    <div className="mt-auto flex gap-2 pt-4">
                       <CreateProjectButton
                         workspaceId={workspaceId}
                         defaultTemplate={template.id}
+                        userTemplates={userTemplates}
                         triggerClassName="inline-flex h-9 w-full items-center justify-center rounded-xl border border-border text-sm text-zinc-200 hover:bg-white/5"
                       >
                         Use template
                       </CreateProjectButton>
+                      {template.owned ? (
+                        <button
+                          type="button"
+                          title="Delete template"
+                          className="grid size-9 shrink-0 place-items-center rounded-xl border border-border text-zinc-500 hover:bg-red-500/10 hover:text-red-300"
+                          onClick={async () => {
+                            const result = await deleteProjectTemplate(template.id.replace(/^user:/, ""));
+                            if (result.error) {
+                              toast(result.error, "error");
+                              return;
+                            }
+                            toast("Template deleted", "success");
+                            router.refresh();
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 ))
@@ -394,6 +461,7 @@ export function ProjectsShell({
             {filter !== "trash" && filter !== "templates" ? (
               <CreateProjectButton
                 workspaceId={filter === "team" ? workspaceId : undefined}
+                userTemplates={userTemplates}
                 triggerClassName={
                   layout === "list"
                     ? "flex w-full items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3 text-left text-zinc-500 hover:bg-white/[0.02]"
@@ -473,7 +541,10 @@ function ProjectMembers({ members }: { members: ProjectCard["members"] }) {
 }
 
 function ProjectActions({ project, trashed }: { project: ProjectCard; trashed: boolean }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   return (
     <div className="flex items-center gap-1">
@@ -493,12 +564,45 @@ function ProjectActions({ project, trashed }: { project: ProjectCard; trashed: b
           ) : (
             <>
               <MenuItem onSelect={() => setEditing(true)}>Edit details</MenuItem>
+              <MenuItem
+                disabled={duplicating}
+                onSelect={() => {
+                  void (async () => {
+                    setDuplicating(true);
+                    try {
+                      const result = await duplicateProject(project.id);
+                      if (result.error) {
+                        toast(result.error, "error");
+                        return;
+                      }
+                      toast("Project duplicated", "success");
+                      if (result.diagramId) router.push(`/editor/${result.projectId}/${result.diagramId}`);
+                      else router.refresh();
+                    } catch {
+                      toast("Couldn’t duplicate project", "error");
+                    } finally {
+                      setDuplicating(false);
+                    }
+                  })();
+                }}
+              >
+                {duplicating ? "Duplicating…" : "Duplicate"}
+              </MenuItem>
+              <MenuItem onSelect={() => setSavingTemplate(true)}>Save as template</MenuItem>
               <MenuItem onSelect={() => trashProject(project.id)}>Move to trash</MenuItem>
             </>
           )}
         </MenuContent>
       </Menu>
       <EditProjectDialog project={project} open={editing} onOpenChange={setEditing} />
+      <SaveTemplateDialog
+        projectId={project.id}
+        projectName={project.name}
+        projectDescription={project.description}
+        hasWorkspace={Boolean(project.workspaceId)}
+        open={savingTemplate}
+        onOpenChange={setSavingTemplate}
+      />
     </div>
   );
 }
@@ -557,7 +661,15 @@ function ProjectRow({ project, trashed }: { project: ProjectCard; trashed: boole
   );
 }
 
-function EmptyProjects({ filter, workspaceId }: { filter: string; workspaceId?: string }) {
+function EmptyProjects({
+  filter,
+  workspaceId,
+  userTemplates,
+}: {
+  filter: string;
+  workspaceId?: string;
+  userTemplates: UserTemplate[];
+}) {
   const copy =
     filter === "trash"
       ? {
@@ -594,6 +706,7 @@ function EmptyProjects({ filter, workspaceId }: { filter: string; workspaceId?: 
       {filter !== "trash" && filter !== "shared" ? (
         <CreateProjectButton
           workspaceId={filter === "team" ? workspaceId : undefined}
+          userTemplates={userTemplates}
           triggerClassName="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-white hover:bg-[#6b74fb]"
         >
           <Plus className="size-4" /> New project

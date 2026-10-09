@@ -9,23 +9,35 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import { Modal, ModalContent, ModalTrigger } from "@/components/ui/modal";
 import { FormSelect } from "@/components/ui/select";
 
+type UserTemplateOption = {
+  id: string;
+  name: string;
+};
+
 export function CreateProjectButton({
   workspaceId,
   triggerClassName,
   children,
   defaultTemplate = "blank",
   openOnMount = false,
+  userTemplates = [],
 }: {
   workspaceId?: string;
   triggerClassName?: string;
   children: ReactNode;
   defaultTemplate?: string;
   openOnMount?: boolean;
+  userTemplates?: UserTemplateOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(openOnMount);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  const templateOptions = [
+    ...PROJECT_TEMPLATES.map((item) => ({ value: item.id, label: item.name })),
+    ...userTemplates.map((item) => ({ value: `user:${item.id}`, label: `${item.name} (saved)` })),
+  ];
 
   return (
     <Modal open={open} onOpenChange={setOpen}>
@@ -67,7 +79,7 @@ export function CreateProjectButton({
               id="template"
               name="template"
               defaultValue={defaultTemplate}
-              options={PROJECT_TEMPLATES.map((item) => ({ value: item.id, label: item.name }))}
+              options={templateOptions}
             />
           </div>
           <div className="space-y-1">

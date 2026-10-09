@@ -1,10 +1,11 @@
-import { and, desc, eq, exists, ilike, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   diagrams,
   projectInvites,
   projectMembers,
   projectTags,
+  projectTemplates,
   projects,
   users,
   workspaceInvites,
@@ -74,6 +75,34 @@ export async function listWorkspaces(userId: string) {
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
     .where(eq(workspaceMembers.userId, userId));
+}
+
+export async function listAccessibleTemplates(userId: string) {
+  const memberships = await db
+    .select({ workspaceId: workspaceMembers.workspaceId })
+    .from(workspaceMembers)
+    .where(eq(workspaceMembers.userId, userId));
+  const workspaceIds = memberships.map((item) => item.workspaceId);
+
+  const rows = await db
+    .select()
+    .from(projectTemplates)
+    .where(
+      workspaceIds.length
+        ? or(eq(projectTemplates.ownerId, userId), inArray(projectTemplates.workspaceId, workspaceIds))
+        : eq(projectTemplates.ownerId, userId),
+    )
+    .orderBy(desc(projectTemplates.updatedAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    tags: row.tags,
+    snapshot: row.bundle.snapshot,
+    workspaceId: row.workspaceId,
+    owned: row.ownerId === userId,
+  }));
 }
 
 export async function listWorkspaceMembers(workspaceId: string, userId: string) {
@@ -157,6 +186,7 @@ export async function listProjects(opts: {
       name: projects.name,
       description: projects.description,
       kind: projects.kind,
+      workspaceId: projects.workspaceId,
       updatedAt: projects.updatedAt,
       deletedAt: projects.deletedAt,
       ownerId: projects.ownerId,
@@ -237,4 +267,37 @@ export async function getPublicProject(shareToken: string) {
     .where(and(eq(diagrams.projectId, project.id), isNull(diagrams.parentDiagramId)))
     .limit(1);
   return { project, root };
+}
+
+export async function getPublicDiagram(shareToken: string, diagramId?: string) {
+  const data = await getPublicProject(shareToken);
+  if (!data?.root) return null;
+
+  const targetId = diagramId || data.root.id;
+  const trail = await getDiagramWithTrail(targetId);
+  if (!trail || trail.diagram.projectId !== data.project.id) return null;
+
+  const rootInTrail = trail.trail[0];
+  if (!rootInTrail || rootInTrail.id !== data.root.id) return null;
+
+  let parentSnapshot = null as (typeof trail.diagram.snapshot) | null;
+  if (trail.diagram.parentDiagramId) {
+    const [parent] = await db
+      .select({ snapshot: diagrams.snapshot })
+      .from(diagrams)
+      .where(
+        and(eq(diagrams.id, trail.diagram.parentDiagramId), eq(diagrams.projectId, data.project.id)),
+      )
+      .limit(1);
+    parentSnapshot = parent?.snapshot ?? null;
+  }
+
+  return {
+    project: data.project,
+    root: data.root,
+    diagram: trail.diagram,
+    trail: trail.trail,
+    parentSnapshot,
+    parentNodeId: trail.diagram.parentNodeId,
+  };
 }

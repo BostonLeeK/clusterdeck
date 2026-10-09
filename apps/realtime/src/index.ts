@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { jwtVerify } from "jose";
 import * as Y from "yjs";
 import { getNodeMap, snapshotFromDoc, type DiagramSnapshot, type MemberRole } from "@dataflow/shared";
-import { db, diagrams, projects } from "@dataflow/db";
+import { appendDiagramHistory, db, diagrams, projects } from "@dataflow/db";
 import { startMcp } from "./mcp";
 
 type AuthContext = {
@@ -72,7 +72,7 @@ const server = new Server({
       applySnapshot(document, row.snapshot);
     }
   },
-  async onStoreDocument({ documentName, document }) {
+  async onStoreDocument({ documentName, document, lastContext }) {
     const [row] = await db
       .select({ snapshot: diagrams.snapshot, projectId: diagrams.projectId })
       .from(diagrams)
@@ -91,6 +91,14 @@ const server = new Server({
       .where(eq(diagrams.id, documentName));
     if (row?.projectId) {
       await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, row.projectId));
+      const auth = lastContext as AuthContext | undefined;
+      await appendDiagramHistory({
+        diagramId: documentName,
+        projectId: row.projectId,
+        userId: auth?.userId,
+        snapshot,
+        previous: row.snapshot,
+      });
     }
   },
 });

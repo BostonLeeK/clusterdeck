@@ -8,7 +8,7 @@ import {
   boolean,
   customType,
 } from "drizzle-orm/pg-core";
-import type { DiagramSnapshot } from "@dataflow/shared";
+import type { DiagramBundle, DiagramSnapshot } from "@dataflow/shared";
 import { shortId } from "./ids";
 
 export const dataflow = pgSchema(process.env.DATABASE_SCHEMA ?? "dataflow");
@@ -192,6 +192,38 @@ export const diagrams = dataflow.table("diagrams", {
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+export const projectTemplates = dataflow.table("project_templates", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  bundle: jsonb("bundle").$type<DiagramBundle>().notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const diagramHistory = dataflow.table("diagram_history", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  diagramId: text("diagram_id")
+    .notNull()
+    .references(() => diagrams.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  label: text("label").notNull(),
+  snapshot: jsonb("snapshot").$type<DiagramSnapshot>().notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
 export const schema = {
   users,
   accounts,
@@ -205,4 +237,6 @@ export const schema = {
   projectInvites,
   projectTags,
   diagrams,
+  projectTemplates,
+  diagramHistory,
 };

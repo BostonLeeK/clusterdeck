@@ -1,4 +1,10 @@
-import { listProjects, listWorkspaceMembers, listWorkspaces, requireUser } from "@/lib/queries";
+import {
+  listAccessibleTemplates,
+  listProjects,
+  listWorkspaceMembers,
+  listWorkspaces,
+  requireUser,
+} from "@/lib/queries";
 import { ProjectsShell } from "@/components/projects/projects-shell";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +19,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   const workspaces = await listWorkspaces(user.id);
   const workspaceId =
     (typeof params.workspace === "string" ? params.workspace : undefined) ?? workspaces[0]?.id;
-  const [projects, team] = await Promise.all([
+  const [projects, team, userTemplates] = await Promise.all([
     listProjects({
       userId: user.id,
       filter: filter === "templates" ? "all" : filter,
@@ -22,6 +28,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       workspaceId: filter === "team" ? workspaceId : undefined,
     }),
     workspaceId ? listWorkspaceMembers(workspaceId, user.id) : Promise.resolve(null),
+    listAccessibleTemplates(user.id),
   ]);
 
   return (
@@ -29,6 +36,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       user={user}
       workspaces={workspaces}
       projects={projects}
+      userTemplates={userTemplates}
       filter={filter}
       workspaceId={workspaceId}
       team={

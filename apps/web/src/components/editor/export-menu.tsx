@@ -6,7 +6,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { exportDiagramBundle, importDiagramJson } from "@/actions/diagrams";
-import { toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
+import { fromDrawio, isDrawioFile, toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
 
 export function ExportMenu({
   diagramId,
@@ -17,7 +17,8 @@ export function ExportMenu({
   getSnapshot: () => DiagramSnapshot;
   onImport: (snapshot: DiagramSnapshot) => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const jsonRef = useRef<HTMLInputElement>(null);
+  const drawioRef = useRef<HTMLInputElement>(null);
 
   async function exportImage(kind: "png" | "svg") {
     const node = document.querySelector(".react-flow__viewport") as HTMLElement | null;
@@ -59,7 +60,7 @@ export function ExportMenu({
     downloadText("diagram.excalidraw", toExcalidraw(getSnapshot()), "application/json");
   }
 
-  async function onFileChange(file: File | undefined) {
+  async function onJsonChange(file: File | undefined) {
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text()) as unknown;
@@ -69,18 +70,41 @@ export function ExportMenu({
     } catch {
       toast("Couldn’t import JSON", "error");
     } finally {
-      if (fileRef.current) fileRef.current.value = "";
+      if (jsonRef.current) jsonRef.current.value = "";
+    }
+  }
+
+  async function onDrawioChange(file: File | undefined) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (!isDrawioFile(file.name, text)) throw new Error("Not a draw.io file");
+      const snapshot = await fromDrawio(text);
+      if (!snapshot.nodes.length && !snapshot.edges.length) throw new Error("Empty diagram");
+      onImport(snapshot);
+      toast("draw.io diagram imported", "success");
+    } catch {
+      toast("Couldn’t import draw.io file", "error");
+    } finally {
+      if (drawioRef.current) drawioRef.current.value = "";
     }
   }
 
   return (
     <>
       <input
-        ref={fileRef}
+        ref={jsonRef}
         type="file"
         accept=".json,application/json"
         className="hidden"
-        onChange={(event) => void onFileChange(event.target.files?.[0])}
+        onChange={(event) => void onJsonChange(event.target.files?.[0])}
+      />
+      <input
+        ref={drawioRef}
+        type="file"
+        accept=".drawio,.dio,.xml,application/xml,text/xml"
+        className="hidden"
+        onChange={(event) => void onDrawioChange(event.target.files?.[0])}
       />
       <Menu>
         <MenuTrigger asChild>
@@ -97,10 +121,18 @@ export function ExportMenu({
           <MenuItem
             onSelect={(event) => {
               event.preventDefault();
-              fileRef.current?.click();
+              jsonRef.current?.click();
             }}
           >
             Import JSON
+          </MenuItem>
+          <MenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              drawioRef.current?.click();
+            }}
+          >
+            Import draw.io
           </MenuItem>
         </MenuContent>
       </Menu>

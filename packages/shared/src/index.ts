@@ -1,7 +1,10 @@
 export * from "./node-types";
+export * from "./diagram-bundle";
+export * from "./diagram-change";
 export * from "./diagram-edits";
 export * from "./templates";
 export * from "./yjs";
 export { toDrawio } from "./export-drawio";
+export { fromDrawio, isDrawioFile } from "./import-drawio";
 export { toExcalidraw } from "./export-excalidraw";
 export { diagramAgentInstructions } from "./mcp-instructions";

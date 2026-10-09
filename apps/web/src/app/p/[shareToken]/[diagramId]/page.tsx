@@ -1,13 +1,24 @@
 import { notFound } from "next/navigation";
 import { EditorApp } from "@/components/editor/editor-app";
+import { mergeInheritedPorts } from "@/lib/diagram";
 import { getPublicDiagram } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function PublicPage({ params }: PageProps<"/p/[shareToken]">) {
-  const { shareToken } = await params;
-  const data = await getPublicDiagram(shareToken);
+export default async function PublicDiagramPage({
+  params,
+}: {
+  params: Promise<{ shareToken: string; diagramId: string }>;
+}) {
+  const { shareToken, diagramId } = await params;
+  const data = await getPublicDiagram(shareToken, diagramId);
   if (!data) notFound();
+
+  let snapshot = data.diagram.snapshot;
+  if (data.parentSnapshot && data.parentNodeId) {
+    snapshot = mergeInheritedPorts(data.parentSnapshot, data.parentNodeId, snapshot);
+  }
+
   return (
     <EditorApp
       key={data.diagram.id}
@@ -19,9 +30,10 @@ export default async function PublicPage({ params }: PageProps<"/p/[shareToken]"
       ownerId={data.project.ownerId}
       members={[]}
       trail={data.trail}
-      snapshot={data.diagram.snapshot}
+      snapshot={snapshot}
       user={{ name: "Guest" }}
       forceReadOnly
+      insideLabel={data.diagram.parentDiagramId ? data.diagram.name : undefined}
     />
   );
 }
