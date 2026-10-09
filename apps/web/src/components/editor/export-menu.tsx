@@ -1,11 +1,12 @@
 "use client";
 
+import { useRef } from "react";
 import { toPng, toSvg } from "html-to-image";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
-import { exportDiagramJson, importDiagramJson } from "@/actions/diagrams";
-import { toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
 import { toast } from "@/components/ui/toast";
+import { exportDiagramBundle, importDiagramJson } from "@/actions/diagrams";
+import { toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
 
 export function ExportMenu({
   diagramId,
@@ -16,6 +17,8 @@ export function ExportMenu({
   getSnapshot: () => DiagramSnapshot;
   onImport: (snapshot: DiagramSnapshot) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
   async function exportImage(kind: "png" | "svg") {
     const node = document.querySelector(".react-flow__viewport") as HTMLElement | null;
     if (!node) return;
@@ -41,7 +44,7 @@ export function ExportMenu({
 
   async function exportJson() {
     try {
-      const bundle = await exportDiagramJson(diagramId, getSnapshot());
+      const bundle = await exportDiagramBundle(diagramId, getSnapshot());
       downloadText("diagram.json", JSON.stringify(bundle, null, 2), "application/json");
     } catch {
       toast("Couldn’t export JSON", "error");
@@ -56,38 +59,51 @@ export function ExportMenu({
     downloadText("diagram.excalidraw", toExcalidraw(getSnapshot()), "application/json");
   }
 
-  function importJson() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const snapshot = await importDiagramJson(diagramId, JSON.parse(await file.text()));
-        onImport(snapshot);
-      } catch {
-        toast("Couldn’t import JSON", "error");
-      }
-    };
-    input.click();
+  async function onFileChange(file: File | undefined) {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const snapshot = await importDiagramJson(diagramId, parsed as never);
+      onImport(snapshot);
+      toast("Diagram imported (including nested diagrams)", "success");
+    } catch {
+      toast("Couldn’t import JSON", "error");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   return (
-    <Menu>
-      <MenuTrigger asChild>
-        <Button size="sm" variant="secondary" className="h-8 rounded-lg">
-          Export
-        </Button>
-      </MenuTrigger>
-      <MenuContent>
-        <MenuItem onSelect={() => void exportImage("png")}>Export PNG</MenuItem>
-        <MenuItem onSelect={() => void exportImage("svg")}>Export SVG</MenuItem>
-        <MenuItem onSelect={exportDrawio}>Export draw.io</MenuItem>
-        <MenuItem onSelect={exportExcalidraw}>Export Excalidraw</MenuItem>
-        <MenuItem onSelect={() => void exportJson()}>Export JSON</MenuItem>
-        <MenuItem onSelect={importJson}>Import JSON</MenuItem>
-      </MenuContent>
-    </Menu>
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={(event) => void onFileChange(event.target.files?.[0])}
+      />
+      <Menu>
+        <MenuTrigger asChild>
+          <Button size="sm" variant="secondary" className="h-8 rounded-lg">
+            Export
+          </Button>
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem onSelect={() => void exportImage("png")}>Export PNG</MenuItem>
+          <MenuItem onSelect={() => void exportImage("svg")}>Export SVG</MenuItem>
+          <MenuItem onSelect={exportDrawio}>Export draw.io</MenuItem>
+          <MenuItem onSelect={exportExcalidraw}>Export Excalidraw</MenuItem>
+          <MenuItem onSelect={() => void exportJson()}>Export JSON</MenuItem>
+          <MenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              fileRef.current?.click();
+            }}
+          >
+            Import JSON
+          </MenuItem>
+        </MenuContent>
+      </Menu>
+    </>
   );
 }

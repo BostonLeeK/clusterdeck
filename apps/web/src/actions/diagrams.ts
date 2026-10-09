@@ -3,16 +3,7 @@
 import { SignJWT } from "jose";
 import { and, eq } from "drizzle-orm";
 import { db, diagrams } from "@dataflow/db";
-import {
-  canEdit,
-  emptySnapshot,
-  isDiagramJsonBundle,
-  isDiagramSnapshot,
-  type DiagramJsonBundle,
-  type DiagramSnapshot,
-  type InfraNodeData,
-  type MemberRole,
-} from "@dataflow/shared";
+import { canEdit, emptySnapshot, type DiagramSnapshot, type InfraNodeData, type MemberRole } from "@dataflow/shared";
 import { auth } from "@/lib/auth";
 import { getAccess, getDiagramWithTrail, getPublicProject, requireUser } from "@/lib/queries";
 
@@ -260,65 +251,210 @@ export async function listInnerNodes(childDiagramId: string): Promise<InnerNodeO
   return connectableNodes(bundle.diagram.snapshot);
 }
 
-async function deleteDiagramDescendants(diagramId: string) {
-  const children = await db.select({ id: diagrams.id }).from(diagrams).where(eq(diagrams.parentDiagramId, diagramId));
+export type DiagramBundleChild = {
+  parentNodeId: string;
+  name: string;
+  snapshot: DiagramSnapshot;
+  children: DiagramBundleChild[];
+};
+
+export type DiagramBundle = {
+  version: 1;
+  name: string;
+  snapshot: DiagramSnapshot;
+  children: DiagramBundleChild[];
+};
+
+async function buildBundleChildrenFromSnapshot(
+  snapshot: DiagramSnapshot,
+  depth = 0,
+): Promise<DiagramBundleChild[]> {
+  if (depth >= MAX_CLONE_DEPTH) return [];
+  const children: DiagramBundleChild[] = [];
+  const seen = new Set<string>();
+
+  for (const node of snapshot.nodes) {
+    if (node.data.kind !== "infra" || !node.data.childDiagramId) continue;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    const [row] = await db.select().from(diagrams).where(eq(diagrams.id, node.data.childDiagramId)).limit(1);
+    if (!row) continue;
+    children.push({
+      parentNodeId: node.id,
+      name: row.name,
+      snapshot: row.snapshot,
+      children: await buildBundleChildrenFromSnapshot(row.snapshot, depth + 1),
+    });
+  }
+  return children;
+}
+
+export async function exportDiagramBundle(
+  diagramId: string,
+  rootSnapshot?: DiagramSnapshot,
+): Promise<DiagramBundle> {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access) throw new Error("forbidden");
+
+  const snapshot = rootSnapshot ?? bundle.diagram.snapshot;
+  return {
+    version: 1,
+    name: bundle.diagram.name,
+    snapshot,
+    children: await buildBundleChildrenFromSnapshot(snapshot),
+  };
+}
+
+async function deleteChildDiagramTrees(parentDiagramId: string) {
+  const children = await db
+    .select({ id: diagrams.id })
+    .from(diagrams)
+    .where(eq(diagrams.parentDiagramId, parentDiagramId));
   for (const child of children) {
-    await deleteDiagramDescendants(child.id);
+    await deleteChildDiagramTrees(child.id);
     await db.delete(diagrams).where(eq(diagrams.id, child.id));
   }
 }
 
-async function buildDiagramJsonBundle(
-  source: Pick<DiagramRow, "id" | "name" | "snapshot">,
+async function materializeBundleChildren(
+  projectId: string,
+  parentDiagramId: string,
+  children: DiagramBundleChild[],
   depth = 0,
-): Promise<DiagramJsonBundle> {
-  const children =
-    depth < MAX_CLONE_DEPTH
-      ? await db.select().from(diagrams).where(eq(diagrams.parentDiagramId, source.id))
-      : [];
-  const nested: Record<string, DiagramJsonBundle> = {};
-  for (const node of source.snapshot.nodes) {
-    if (node.data.kind !== "infra") continue;
-    const inner = pickInnerDiagram(children.filter((child) => child.parentNodeId === node.id));
-    if (!inner) continue;
-    nested[node.id] = await buildDiagramJsonBundle(inner, depth + 1);
+): Promise<Map<string, InnerDiagramLink>> {
+  const links = new Map<string, InnerDiagramLink>();
+  if (depth >= MAX_CLONE_DEPTH) return links;
+
+  for (const child of children) {
+    const [created] = await db
+      .insert(diagrams)
+      .values({
+        projectId,
+        parentDiagramId,
+        parentNodeId: child.parentNodeId,
+        name: child.name,
+        snapshot: child.snapshot,
+      })
+      .returning({ id: diagrams.id });
+    if (!created) continue;
+
+    const nested = await materializeBundleChildren(projectId, created.id, child.children, depth + 1);
+    let snapshot = child.snapshot;
+    if (nested.size) {
+      snapshot = {
+        ...child.snapshot,
+        nodes: child.snapshot.nodes.map((node) => {
+          if (node.data.kind !== "infra") return node;
+          const link = nested.get(node.id);
+          if (!link) {
+            return node.data.childDiagramId
+              ? { ...node, data: { ...node.data, childDiagramId: undefined } }
+              : node;
+          }
+          return {
+            ...node,
+            data: { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount },
+          };
+        }),
+      };
+      await db.update(diagrams).set({ snapshot, ydocState: null }).where(eq(diagrams.id, created.id));
+    } else if (child.snapshot.nodes.some((node) => node.data.kind === "infra" && node.data.childDiagramId)) {
+      snapshot = {
+        ...child.snapshot,
+        nodes: child.snapshot.nodes.map((node) =>
+          node.data.kind === "infra" && node.data.childDiagramId
+            ? { ...node, data: { ...node.data, childDiagramId: undefined } }
+            : node,
+        ),
+      };
+      await db.update(diagrams).set({ snapshot, ydocState: null }).where(eq(diagrams.id, created.id));
+    }
+
+    links.set(child.parentNodeId, {
+      diagramId: created.id,
+      nodeCount: innerContentCount(snapshot),
+    });
   }
-  return {
-    version: 1,
-    name: source.name,
-    snapshot: source.snapshot,
-    children: nested,
-  };
+  return links;
 }
 
-async function applyDiagramJsonBundle(
-  diagramId: string,
+function isDiagramBundle(value: unknown): value is DiagramBundle {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return (
+    row.version === 1 &&
+    row.snapshot != null &&
+    typeof row.snapshot === "object" &&
+    Array.isArray((row.snapshot as DiagramSnapshot).nodes) &&
+    Array.isArray((row.snapshot as DiagramSnapshot).edges) &&
+    Array.isArray(row.children)
+  );
+}
+
+function isFlatSnapshot(value: unknown): value is DiagramSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return Array.isArray(row.nodes) && Array.isArray(row.edges) && row.version !== 1;
+}
+
+async function expandFlatSnapshotToChildren(
+  userId: string,
   projectId: string,
-  bundle: DiagramJsonBundle,
-  depth = 0,
+  snapshot: DiagramSnapshot,
+): Promise<DiagramBundleChild[]> {
+  const children: DiagramBundleChild[] = [];
+  const seen = new Set<string>();
+  for (const node of snapshot.nodes) {
+    if (node.data.kind !== "infra" || !node.data.childDiagramId) continue;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    const [source] = await db.select().from(diagrams).where(eq(diagrams.id, node.data.childDiagramId)).limit(1);
+    if (!source) continue;
+    if (source.projectId !== projectId && !(await getAccess(source.projectId, userId))) continue;
+    children.push({
+      parentNodeId: node.id,
+      name: source.name,
+      snapshot: source.snapshot,
+      children: await buildBundleChildrenFromSnapshot(source.snapshot),
+    });
+  }
+  return children;
+}
+
+export async function importDiagramJson(
+  diagramId: string,
+  payload: DiagramBundle | DiagramSnapshot,
 ): Promise<DiagramSnapshot> {
-  const links = new Map<string, InnerDiagramLink>();
-  if (depth < MAX_CLONE_DEPTH) {
-    for (const [parentNodeId, child] of Object.entries(bundle.children ?? {})) {
-      const [created] = await db
-        .insert(diagrams)
-        .values({
-          projectId,
-          parentDiagramId: diagramId,
-          parentNodeId,
-          name: child.name || "Inner",
-          snapshot: emptySnapshot(),
-        })
-        .returning({ id: diagrams.id });
-      if (!created) continue;
-      const applied = await applyDiagramJsonBundle(created.id, projectId, child, depth + 1);
-      links.set(parentNodeId, { diagramId: created.id, nodeCount: innerContentCount(applied) });
-    }
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access || !canEdit(access.role)) throw new Error("forbidden");
+
+  const projectId = bundle.diagram.projectId;
+
+  let rootSnapshot: DiagramSnapshot;
+  let children: DiagramBundleChild[];
+
+  if (isDiagramBundle(payload)) {
+    rootSnapshot = payload.snapshot;
+    children = payload.children;
+  } else if (isFlatSnapshot(payload)) {
+    rootSnapshot = payload;
+    children = await expandFlatSnapshotToChildren(user.id, projectId, payload);
+  } else {
+    throw new Error("invalid diagram json");
   }
 
-  const snapshot: DiagramSnapshot = {
-    ...bundle.snapshot,
-    nodes: bundle.snapshot.nodes.map((node) => {
+  await deleteChildDiagramTrees(diagramId);
+  const links = await materializeBundleChildren(projectId, diagramId, children);
+
+  const nextSnapshot: DiagramSnapshot = {
+    ...rootSnapshot,
+    nodes: rootSnapshot.nodes.map((node) => {
       if (node.data.kind !== "infra") return node;
       const link = links.get(node.id);
       if (link) {
@@ -336,39 +472,8 @@ async function applyDiagramJsonBundle(
 
   await db
     .update(diagrams)
-    .set({ snapshot, ydocState: null, updatedAt: new Date() })
+    .set({ snapshot: nextSnapshot, ydocState: null, updatedAt: new Date() })
     .where(eq(diagrams.id, diagramId));
-  return snapshot;
-}
 
-export async function exportDiagramJson(diagramId: string, rootSnapshot?: DiagramSnapshot) {
-  const user = await requireUser();
-  const bundle = await getDiagramWithTrail(diagramId);
-  if (!bundle) throw new Error("not found");
-  const access = await getAccess(bundle.diagram.projectId, user.id);
-  if (!access) throw new Error("forbidden");
-  return buildDiagramJsonBundle({
-    id: diagramId,
-    name: bundle.diagram.name,
-    snapshot: rootSnapshot ?? bundle.diagram.snapshot,
-  });
-}
-
-export async function importDiagramJson(diagramId: string, payload: unknown) {
-  const user = await requireUser();
-  const trail = await getDiagramWithTrail(diagramId);
-  if (!trail) throw new Error("not found");
-  const access = await getAccess(trail.diagram.projectId, user.id);
-  if (!access || !canEdit(access.role)) throw new Error("forbidden");
-
-  const bundle: DiagramJsonBundle = isDiagramJsonBundle(payload)
-    ? payload
-    : isDiagramSnapshot(payload)
-      ? { version: 1, name: trail.diagram.name, snapshot: payload, children: {} }
-      : (() => {
-          throw new Error("invalid payload");
-        })();
-
-  await deleteDiagramDescendants(diagramId);
-  return applyDiagramJsonBundle(diagramId, trail.diagram.projectId, bundle);
+  return nextSnapshot;
 }
