@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/logo";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
-import { docsSections } from "@/lib/docs";
+import { docsSections } from "@/lib/docs-nav";
 
 export function DocsShell({
   children,

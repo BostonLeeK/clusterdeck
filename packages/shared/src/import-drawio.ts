@@ -115,15 +115,13 @@ async function inflateRawBase64(data: string): Promise<string> {
   const binary = atob(padded);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
 
-  if (typeof DecompressionStream !== "undefined") {
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    const buffer = await new Response(stream).arrayBuffer();
-    return new TextDecoder().decode(buffer);
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("Unable to decompress draw.io diagram");
   }
 
-  const zlib = await import("node:zlib").catch(() => null);
-  if (!zlib) throw new Error("Unable to decompress draw.io diagram");
-  return zlib.inflateRawSync(Buffer.from(bytes)).toString("utf8");
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new TextDecoder().decode(buffer);
 }
 
 async function decodeDiagramPayload(payload: string): Promise<string> {

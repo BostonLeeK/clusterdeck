@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { DocNavItem } from "@/lib/docs";
-import { docsHref } from "@/lib/docs";
+import type { DocNavItem } from "@/lib/docs-nav";
+import { docsHref } from "@/lib/docs-nav";
 
 function slugKey(slug: string[]) {
   return slug.join("/");

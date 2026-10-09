@@ -1,6 +1,6 @@
 import Link from "next/link";
-import type { DocNavItem } from "@/lib/docs";
-import { docsHref } from "@/lib/docs";
+import type { DocNavItem } from "@/lib/docs-nav";
+import { docsHref } from "@/lib/docs-nav";
 
 export function DocsPager({
   prev,

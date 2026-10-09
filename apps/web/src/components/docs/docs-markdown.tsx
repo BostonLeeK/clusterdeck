@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { Components } from "react-markdown";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { slugify } from "@/lib/docs";
+import { slugify } from "@/lib/docs-nav";
 
 const components: Components = {
   a: ({ href, children }) => {

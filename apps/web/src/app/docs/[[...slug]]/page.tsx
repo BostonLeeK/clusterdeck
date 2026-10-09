@@ -4,12 +4,8 @@ import { DocsMarkdown } from "@/components/docs/docs-markdown";
 import { DocsPager } from "@/components/docs/docs-pager";
 import { DocsShell } from "@/components/docs/docs-shell";
 import { DocsToc } from "@/components/docs/docs-toc";
-import {
-  extractHeadings,
-  getAdjacentDocs,
-  getDocPage,
-  listDocSlugs,
-} from "@/lib/docs";
+import { getDocPage } from "@/lib/docs";
+import { extractHeadings, getAdjacentDocs, listDocSlugs } from "@/lib/docs-nav";
 
 export const runtime = "nodejs";
 
