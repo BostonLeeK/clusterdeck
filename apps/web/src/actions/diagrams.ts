@@ -3,7 +3,16 @@
 import { SignJWT } from "jose";
 import { and, eq } from "drizzle-orm";
 import { db, diagrams } from "@dataflow/db";
-import { canEdit, emptySnapshot, type DiagramSnapshot, type InfraNodeData, type MemberRole } from "@dataflow/shared";
+import {
+  canEdit,
+  emptySnapshot,
+  isDiagramJsonBundle,
+  isDiagramSnapshot,
+  type DiagramJsonBundle,
+  type DiagramSnapshot,
+  type InfraNodeData,
+  type MemberRole,
+} from "@dataflow/shared";
 import { auth } from "@/lib/auth";
 import { getAccess, getDiagramWithTrail, getPublicProject, requireUser } from "@/lib/queries";
 
@@ -251,6 +260,115 @@ export async function listInnerNodes(childDiagramId: string): Promise<InnerNodeO
   return connectableNodes(bundle.diagram.snapshot);
 }
 
-export async function importDiagramJson(diagramId: string, snapshot: DiagramSnapshot) {
-  await saveDiagramSnapshot(diagramId, snapshot);
+async function deleteDiagramDescendants(diagramId: string) {
+  const children = await db.select({ id: diagrams.id }).from(diagrams).where(eq(diagrams.parentDiagramId, diagramId));
+  for (const child of children) {
+    await deleteDiagramDescendants(child.id);
+    await db.delete(diagrams).where(eq(diagrams.id, child.id));
+  }
+}
+
+async function buildDiagramJsonBundle(
+  source: Pick<DiagramRow, "id" | "name" | "snapshot">,
+  depth = 0,
+): Promise<DiagramJsonBundle> {
+  const children =
+    depth < MAX_CLONE_DEPTH
+      ? await db.select().from(diagrams).where(eq(diagrams.parentDiagramId, source.id))
+      : [];
+  const nested: Record<string, DiagramJsonBundle> = {};
+  for (const node of source.snapshot.nodes) {
+    if (node.data.kind !== "infra") continue;
+    const inner = pickInnerDiagram(children.filter((child) => child.parentNodeId === node.id));
+    if (!inner) continue;
+    nested[node.id] = await buildDiagramJsonBundle(inner, depth + 1);
+  }
+  return {
+    version: 1,
+    name: source.name,
+    snapshot: source.snapshot,
+    children: nested,
+  };
+}
+
+async function applyDiagramJsonBundle(
+  diagramId: string,
+  projectId: string,
+  bundle: DiagramJsonBundle,
+  depth = 0,
+): Promise<DiagramSnapshot> {
+  const links = new Map<string, InnerDiagramLink>();
+  if (depth < MAX_CLONE_DEPTH) {
+    for (const [parentNodeId, child] of Object.entries(bundle.children ?? {})) {
+      const [created] = await db
+        .insert(diagrams)
+        .values({
+          projectId,
+          parentDiagramId: diagramId,
+          parentNodeId,
+          name: child.name || "Inner",
+          snapshot: emptySnapshot(),
+        })
+        .returning({ id: diagrams.id });
+      if (!created) continue;
+      const applied = await applyDiagramJsonBundle(created.id, projectId, child, depth + 1);
+      links.set(parentNodeId, { diagramId: created.id, nodeCount: innerContentCount(applied) });
+    }
+  }
+
+  const snapshot: DiagramSnapshot = {
+    ...bundle.snapshot,
+    nodes: bundle.snapshot.nodes.map((node) => {
+      if (node.data.kind !== "infra") return node;
+      const link = links.get(node.id);
+      if (link) {
+        return {
+          ...node,
+          data: { ...node.data, childDiagramId: link.diagramId, childCount: link.nodeCount },
+        };
+      }
+      if (node.data.childDiagramId) {
+        return { ...node, data: { ...node.data, childDiagramId: undefined } };
+      }
+      return node;
+    }),
+  };
+
+  await db
+    .update(diagrams)
+    .set({ snapshot, ydocState: null, updatedAt: new Date() })
+    .where(eq(diagrams.id, diagramId));
+  return snapshot;
+}
+
+export async function exportDiagramJson(diagramId: string, rootSnapshot?: DiagramSnapshot) {
+  const user = await requireUser();
+  const bundle = await getDiagramWithTrail(diagramId);
+  if (!bundle) throw new Error("not found");
+  const access = await getAccess(bundle.diagram.projectId, user.id);
+  if (!access) throw new Error("forbidden");
+  return buildDiagramJsonBundle({
+    id: diagramId,
+    name: bundle.diagram.name,
+    snapshot: rootSnapshot ?? bundle.diagram.snapshot,
+  });
+}
+
+export async function importDiagramJson(diagramId: string, payload: unknown) {
+  const user = await requireUser();
+  const trail = await getDiagramWithTrail(diagramId);
+  if (!trail) throw new Error("not found");
+  const access = await getAccess(trail.diagram.projectId, user.id);
+  if (!access || !canEdit(access.role)) throw new Error("forbidden");
+
+  const bundle: DiagramJsonBundle = isDiagramJsonBundle(payload)
+    ? payload
+    : isDiagramSnapshot(payload)
+      ? { version: 1, name: trail.diagram.name, snapshot: payload, children: {} }
+      : (() => {
+          throw new Error("invalid payload");
+        })();
+
+  await deleteDiagramDescendants(diagramId);
+  return applyDiagramJsonBundle(diagramId, trail.diagram.projectId, bundle);
 }

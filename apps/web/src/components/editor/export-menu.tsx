@@ -3,8 +3,9 @@
 import { toPng, toSvg } from "html-to-image";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
-import { importDiagramJson } from "@/actions/diagrams";
+import { exportDiagramJson, importDiagramJson } from "@/actions/diagrams";
 import { toDrawio, toExcalidraw, type DiagramSnapshot } from "@dataflow/shared";
+import { toast } from "@/components/ui/toast";
 
 export function ExportMenu({
   diagramId,
@@ -38,8 +39,13 @@ export function ExportMenu({
     URL.revokeObjectURL(url);
   }
 
-  function exportJson() {
-    downloadText("diagram.json", JSON.stringify(getSnapshot(), null, 2), "application/json");
+  async function exportJson() {
+    try {
+      const bundle = await exportDiagramJson(diagramId, getSnapshot());
+      downloadText("diagram.json", JSON.stringify(bundle, null, 2), "application/json");
+    } catch {
+      toast("Couldn’t export JSON", "error");
+    }
   }
 
   function exportDrawio() {
@@ -57,9 +63,12 @@ export function ExportMenu({
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const snapshot = JSON.parse(await file.text()) as DiagramSnapshot;
-      onImport(snapshot);
-      await importDiagramJson(diagramId, snapshot);
+      try {
+        const snapshot = await importDiagramJson(diagramId, JSON.parse(await file.text()));
+        onImport(snapshot);
+      } catch {
+        toast("Couldn’t import JSON", "error");
+      }
     };
     input.click();
   }
@@ -76,7 +85,7 @@ export function ExportMenu({
         <MenuItem onSelect={() => void exportImage("svg")}>Export SVG</MenuItem>
         <MenuItem onSelect={exportDrawio}>Export draw.io</MenuItem>
         <MenuItem onSelect={exportExcalidraw}>Export Excalidraw</MenuItem>
-        <MenuItem onSelect={exportJson}>Export JSON</MenuItem>
+        <MenuItem onSelect={() => void exportJson()}>Export JSON</MenuItem>
         <MenuItem onSelect={importJson}>Import JSON</MenuItem>
       </MenuContent>
     </Menu>

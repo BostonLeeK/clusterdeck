@@ -213,6 +213,25 @@ export interface DiagramSnapshot {
   meta?: DiagramMeta;
 }
 
+export interface DiagramJsonBundle {
+  version: 1;
+  name: string;
+  snapshot: DiagramSnapshot;
+  children: Record<string, DiagramJsonBundle>;
+}
+
+export function isDiagramSnapshot(value: unknown): value is DiagramSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const snapshot = value as DiagramSnapshot;
+  return Array.isArray(snapshot.nodes) && Array.isArray(snapshot.edges);
+}
+
+export function isDiagramJsonBundle(value: unknown): value is DiagramJsonBundle {
+  if (!value || typeof value !== "object") return false;
+  const bundle = value as DiagramJsonBundle;
+  return bundle.version === 1 && typeof bundle.name === "string" && isDiagramSnapshot(bundle.snapshot);
+}
+
 export interface NodeTypeDefinition {
   id: InfraNodeTypeId;
   label: string;
