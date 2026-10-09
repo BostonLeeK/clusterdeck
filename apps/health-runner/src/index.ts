@@ -12,6 +12,7 @@ import { defaultStaleAfterSec, type DiagramSnapshot, type InfraNodeData, type No
 import { eq } from "drizzle-orm";
 import { alertEmailHtml, emailConfigured, sendAlertEmail } from "./email";
 import { probeHealth } from "./probe";
+import { sendSlackAlert } from "./slack";
 
 type ProbeTarget = {
   diagramId: string;
@@ -97,21 +98,45 @@ async function maybeAlert(target: ProbeTarget, message: string, failureTimes: st
   if (lastAlertAt && Date.now() - lastAlertAt.getTime() < cooldownSec * 1000) return false;
 
   const emails = [...(alert.emails ?? [])];
-  if (!emails.length && target.ownerEmail) emails.push(target.ownerEmail);
+  if (!emails.length && !alert.slackWebhookUrl && target.ownerEmail) emails.push(target.ownerEmail);
   const unique = [...new Set(emails.map((item) => item.trim().toLowerCase()).filter(Boolean))];
-  if (!unique.length) {
-    console.warn(`[health-runner] alert skipped (no recipients) ${target.diagramId}/${target.nodeId}`);
-    return false;
-  }
-  if (!emailConfigured()) {
-    console.warn(`[health-runner] alert skipped (email not configured) ${target.diagramId}/${target.nodeId}`);
+  const slackWebhookUrl = alert.slackWebhookUrl?.trim();
+  const appUrl = `${APP_URL}/editor/${target.projectId}/${target.diagramId}`;
+
+  if (!unique.length && !slackWebhookUrl) {
+    console.warn(`[health-runner] alert skipped (no email/slack) ${target.diagramId}/${target.nodeId}`);
     return false;
   }
 
-  await sendAlertEmail({
-    to: unique,
-    subject: `[ClusterDeck] ${target.title} is unhealthy`,
-    html: alertEmailHtml({
+  let sent = false;
+
+  if (unique.length) {
+    if (!emailConfigured()) {
+      console.warn(`[health-runner] email skipped (not configured) ${target.diagramId}/${target.nodeId}`);
+    } else {
+      await sendAlertEmail({
+        to: unique,
+        subject: `[ClusterDeck] ${target.title} is unhealthy`,
+        html: alertEmailHtml({
+          projectName: target.projectName,
+          diagramName: target.diagramName,
+          nodeTitle: target.title,
+          nodeId: target.nodeId,
+          message,
+          failCount,
+          windowSec,
+          url: target.health.url,
+          appUrl,
+        }),
+      });
+      console.log(`[health-runner] alert mailed ${target.diagramId}/${target.nodeId} → ${unique.join(",")}`);
+      sent = true;
+    }
+  }
+
+  if (slackWebhookUrl) {
+    await sendSlackAlert({
+      webhookUrl: slackWebhookUrl,
       projectName: target.projectName,
       diagramName: target.diagramName,
       nodeTitle: target.title,
@@ -120,11 +145,13 @@ async function maybeAlert(target: ProbeTarget, message: string, failureTimes: st
       failCount,
       windowSec,
       url: target.health.url,
-      appUrl: `${APP_URL}/editor/${target.projectId}/${target.diagramId}`,
-    }),
-  });
-  console.log(`[health-runner] alert mailed ${target.diagramId}/${target.nodeId} → ${unique.join(",")}`);
-  return true;
+      appUrl,
+    });
+    console.log(`[health-runner] alert slack ${target.diagramId}/${target.nodeId}`);
+    sent = true;
+  }
+
+  return sent;
 }
 
 async function processTarget(target: ProbeTarget) {

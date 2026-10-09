@@ -61,18 +61,25 @@ Local:
 pnpm --filter health-runner dev
 ```
 
-## Email alerts (N failures in a window)
+## Alerts: email and Slack (N failures in a window)
 
-On the node, enable **Email alerts**:
+On the node, enable **Alerts**:
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | Failures | 3 | How many failed probes |
 | Window (sec) | 300 | Time window for those failures |
-| Cool (sec) | 3600 | Minimum time between emails |
-| Emails | (owner) | Comma-separated list; blank → project owner |
+| Cool (sec) | 3600 | Minimum time between alerts |
+| Emails | (owner) | Comma-separated; blank → project owner if Slack is empty |
+| Slack webhook | — | Incoming Webhook URL from Slack |
 
-Example: 3 failures within 5 minutes → one email; no repeat for 1 hour while still failing.
+### Slack setup
+
+1. In Slack: create an app / enable **Incoming Webhooks**.
+2. Add the webhook to a channel and copy the URL (`https://hooks.slack.com/services/…`).
+3. Paste it into the node alert settings.
+
+Example: 3 failures within 5 minutes → email and/or Slack once; no repeat for 1 hour while still failing.
 
 Recovery clears the failure window when a probe succeeds.
 

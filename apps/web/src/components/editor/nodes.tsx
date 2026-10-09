@@ -156,6 +156,7 @@ function Shell({
   accent,
   dashed,
   future,
+  offline,
   className,
   style,
   children,
@@ -165,12 +166,13 @@ function Shell({
   accent: string;
   dashed: boolean;
   future: boolean;
+  offline?: boolean;
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
 }) {
   const hex = shape === "hexagon";
-  const borderColor = selected ? "#818cf8" : `${accent}99`;
+  const borderColor = offline ? "#f87171" : selected ? "#818cf8" : `${accent}99`;
 
   return (
     <div
@@ -179,8 +181,10 @@ function Shell({
         hex ? "px-7" : "px-3",
         !hex && "border",
         shapeClass(shape),
-        !hex && (selected ? "ring-1 ring-indigo-400/40" : null),
+        !hex && !offline && (selected ? "ring-1 ring-indigo-400/40" : null),
+        !hex && offline && "ring-1 ring-red-400/50",
         !hex && (dashed || future ? "border-dashed" : "border-solid"),
+        offline && "animate-status-offline-card",
         className,
       )}
       style={{
@@ -200,7 +204,7 @@ function Shell({
             points={HEX_POINTS}
             fill="none"
             stroke={borderColor}
-            strokeWidth={selected ? 2.4 : 1.8}
+            strokeWidth={selected || offline ? 2.4 : 1.8}
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
             strokeDasharray={dashed || future ? "4 3" : undefined}
@@ -335,6 +339,7 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
         accent={accent}
         dashed={scope === "external"}
         future={lifecycle === "future"}
+        offline={status === "offline"}
         className={cn(
           lifecycle === "deprecated" && "grayscale-[0.35]",
           sized && "size-full",
@@ -387,13 +392,16 @@ export const InfraNode = memo(function InfraNode({ id, data, selected, width, he
                 STATUS_DOT[status],
                 status === "healthy" && resolved.mode !== "stale" && "animate-status-pulse",
                 status === "degraded" && resolved.mode === "live" && "animate-status-glow",
+                status === "offline" && "animate-status-glow",
                 resolved.mode === "stale" && "opacity-50",
               )}
             />
-            {resolved.mode === "live" ? (
+            {status === "offline" ? (
+              <span className="text-[9px] font-semibold tracking-wide text-red-300">OFFLINE</span>
+            ) : resolved.mode === "live" ? (
               <span className="text-[9px] font-semibold tracking-wide text-emerald-300/90">LIVE</span>
             ) : null}
-            {resolved.mode === "stale" ? (
+            {resolved.mode === "stale" && status !== "offline" ? (
               <span className="text-[9px] font-semibold tracking-wide text-zinc-500">STALE</span>
             ) : null}
           </span>

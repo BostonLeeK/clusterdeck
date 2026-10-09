@@ -39,7 +39,7 @@ export function diagramAgentInstructions(): string {
     "- title, subtitle, description (markdown), displayDescription (short canvas caption)",
     "- tags: string[], technologies: tech ids from the catalog",
     "- status: healthy|degraded|unknown|offline (documented/manual)",
-    "- health: optional probe config { enabled, kind: http|tcp|external, url?, expectStatus?, intervalSec?, staleAfterSec?, alert?: { enabled, emails?, failCount?, windowSec?, cooldownSec? } }. health-runner probes http/tcp; external is push-only.",
+    "- health: optional probe config { enabled, kind: http|tcp|external, url?, expectStatus?, intervalSec?, staleAfterSec?, alert?: { enabled, emails?, slackWebhookUrl?, failCount?, windowSec?, cooldownSec? } }. health-runner probes http/tcp; external is push-only.",
     "- shape: rounded|rectangle|cylinder|hexagon|actor|stadium",
     "- scope: internal|external (external = dashed outline)",
     "- lifecycle: live|future|deprecated|removed (future = dashed outline)",

@@ -9,6 +9,8 @@ import {
   ArrowUpRight,
   Ban,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Circle,
   CircleDashed,
   CircleDot,
@@ -765,9 +767,9 @@ function InfraDetails({
                 <div className="rounded-lg border border-[#242428] px-2.5 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-medium text-zinc-200">Email alerts</div>
+                      <div className="text-[11px] font-medium text-zinc-200">Alerts</div>
                       <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
-                        Notify after N failures inside a time window.
+                        Email and/or Slack after N failures inside a time window.
                       </p>
                     </div>
                     <Switch
@@ -779,6 +781,7 @@ function InfraDetails({
                             alert: {
                               enabled,
                               emails: health.alert?.emails,
+                              slackWebhookUrl: health.alert?.slackWebhookUrl,
                               failCount: health.alert?.failCount ?? 3,
                               windowSec: health.alert?.windowSec ?? 300,
                               cooldownSec: health.alert?.cooldownSec ?? 3600,
@@ -790,7 +793,7 @@ function InfraDetails({
                   </div>
                   {health.alert?.enabled ? (
                     <div className="mt-2 space-y-2">
-                      <Field label="Emails (comma-separated, blank = project owner)">
+                      <Field label="Emails (comma-separated, blank = owner if no Slack)">
                         <Input
                           value={(health.alert.emails ?? []).join(", ")}
                           placeholder="ops@company.com, oncall@company.com"
@@ -804,6 +807,23 @@ function InfraDetails({
                                     .split(",")
                                     .map((item) => item.trim())
                                     .filter(Boolean),
+                                },
+                              },
+                            })
+                          }
+                        />
+                      </Field>
+                      <Field label="Slack webhook URL">
+                        <Input
+                          value={health.alert.slackWebhookUrl ?? ""}
+                          placeholder="https://hooks.slack.com/services/…"
+                          onChange={(event) =>
+                            patch({
+                              health: {
+                                ...health,
+                                alert: {
+                                  ...health.alert!,
+                                  slackWebhookUrl: event.target.value || undefined,
                                 },
                               },
                             })
@@ -1034,11 +1054,40 @@ function InfraDetails({
             <div className="space-y-2">
               {data.properties.map((property, index) => {
                 const showOnCanvas = property.showOnCanvas !== false;
+                const moveProperty = (direction: -1 | 1) => {
+                  const next = index + direction;
+                  if (next < 0 || next >= data.properties.length) return;
+                  const properties = data.properties.slice();
+                  const [item] = properties.splice(index, 1);
+                  if (!item) return;
+                  properties.splice(next, 0, item);
+                  patch({ properties });
+                };
                 return (
                   <div
                     key={property.id}
-                    className="grid grid-cols-[auto_1fr_1fr_auto_auto] items-center gap-1.5 text-sm"
+                    className="grid grid-cols-[auto_auto_1fr_1fr_auto_auto] items-center gap-1.5 text-sm"
                   >
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        title="Move up"
+                        disabled={index === 0}
+                        className="grid size-4 place-items-center text-zinc-500 hover:text-white disabled:opacity-20"
+                        onClick={() => moveProperty(-1)}
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Move down"
+                        disabled={index === data.properties.length - 1}
+                        className="grid size-4 place-items-center text-zinc-500 hover:text-white disabled:opacity-20"
+                        onClick={() => moveProperty(1)}
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </div>
                     <IconPicker
                       value={property.icon}
                       onChange={(icon) => {

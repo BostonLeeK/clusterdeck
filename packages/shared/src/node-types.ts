@@ -42,6 +42,7 @@ export type NodeHealthKind = (typeof NODE_HEALTH_KINDS)[number];
 export type NodeHealthAlert = {
   enabled: boolean;
   emails?: string[];
+  slackWebhookUrl?: string;
   failCount?: number;
   windowSec?: number;
   cooldownSec?: number;

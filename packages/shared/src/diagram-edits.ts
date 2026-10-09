@@ -144,6 +144,11 @@ function normalizeAlert(alert: NodeHealthAlert | undefined): NodeHealthAlert | u
     .map((item) => item.trim().toLowerCase())
     .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item))
     .slice(0, 10);
+  const slackRaw = alert.slackWebhookUrl?.trim() ?? "";
+  const slackWebhookUrl =
+    slackRaw && /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+$/.test(slackRaw)
+      ? slackRaw
+      : undefined;
   const failCount =
     typeof alert.failCount === "number" && alert.failCount > 0
       ? Math.min(Math.floor(alert.failCount), 50)
@@ -159,6 +164,7 @@ function normalizeAlert(alert: NodeHealthAlert | undefined): NodeHealthAlert | u
   return {
     enabled: Boolean(alert.enabled),
     emails: emails.length ? emails : undefined,
+    slackWebhookUrl,
     failCount,
     windowSec,
     cooldownSec,

@@ -71,16 +71,20 @@ const nodeInput = z.object({
       alert: z
         .object({
           enabled: z.boolean(),
-          emails: z.array(z.string()).optional().describe("Recipients; empty uses project owner."),
+          emails: z.array(z.string()).optional().describe("Recipients; empty uses project owner if no Slack."),
+          slackWebhookUrl: z
+            .string()
+            .optional()
+            .describe("Slack Incoming Webhook URL (https://hooks.slack.com/services/…)."),
           failCount: z.number().optional().describe("Failures required inside windowSec (default 3)."),
           windowSec: z.number().optional().describe("Failure window in seconds (default 300)."),
-          cooldownSec: z.number().optional().describe("Min seconds between emails (default 3600)."),
+          cooldownSec: z.number().optional().describe("Min seconds between alerts (default 3600)."),
         })
         .optional(),
     })
     .nullable()
     .optional()
-    .describe("Live-status probe + optional email alert config. null clears."),
+    .describe("Live-status probe + optional email/Slack alert config. null clears."),
   properties: z
     .array(propertyInput)
     .optional()
