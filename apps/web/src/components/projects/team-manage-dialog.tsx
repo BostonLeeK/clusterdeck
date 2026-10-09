@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Send, Trash2, Users } from "lucide-react";
 import {
   cancelWorkspaceInvite,
+  deleteWorkspace,
   inviteWorkspaceMember,
   removeWorkspaceMember,
   updateWorkspaceMemberRole,
@@ -52,6 +53,10 @@ export function TeamManageDialog({
   const [people, setPeople] = useState(members);
   const [pending, setPending] = useState(invites);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmName, setConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const isOwner = currentRole === "owner";
+  const canDelete = isOwner && confirmName === workspaceName;
 
   useEffect(() => {
     setPeople(members);
@@ -67,10 +72,10 @@ export function TeamManageDialog({
     <Modal>
       <ModalTrigger asChild>
         <Button variant="secondary" size="sm" className="h-8 gap-1.5 rounded-lg">
-          <Users className="size-3.5" /> Invite
+          <Users className="size-3.5" /> Manage
         </Button>
       </ModalTrigger>
-      <ModalContent title={`Invite to ${workspaceName}`} description="Add people to this team by email.">
+      <ModalContent title={workspaceName} description="Invite people, manage roles, or delete this team.">
         <form
           className="mb-5 flex gap-2"
           onSubmit={async (event) => {
@@ -229,6 +234,51 @@ export function TeamManageDialog({
                 </button>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {isOwner ? (
+          <div className="mt-5 space-y-3 border-t border-red-500/20 pt-4">
+            <div>
+              <div className="text-sm text-red-300">Delete team</div>
+              <p className="mt-1 text-[12px] text-zinc-500">
+                Permanently deletes this team. Its projects move to Trash. Type{" "}
+                <span className="font-medium text-zinc-300">{workspaceName}</span> to confirm.
+              </p>
+            </div>
+            <Input
+              value={confirmName}
+              onChange={(event) => setConfirmName(event.target.value)}
+              placeholder={workspaceName}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <Button
+              type="button"
+              variant="destructive"
+              className="w-full"
+              disabled={!canDelete || deleting}
+              onClick={async () => {
+                if (!canDelete || deleting) return;
+                setDeleting(true);
+                try {
+                  const result = await deleteWorkspace(workspaceId);
+                  if (result.error) {
+                    toast(result.error, "error");
+                    return;
+                  }
+                  toast("Team deleted", "success");
+                  router.push("/projects");
+                  router.refresh();
+                } catch {
+                  toast("Couldn’t delete team", "error");
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting..." : "Delete team"}
+            </Button>
           </div>
         ) : null}
       </ModalContent>

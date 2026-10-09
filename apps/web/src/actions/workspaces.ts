@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { db, users, workspaceInvites, workspaceMembers, workspaces } from "@dataflow/db";
+import { db, projects, users, workspaceInvites, workspaceMembers, workspaces } from "@dataflow/db";
 import { canManageWorkspace } from "@dataflow/shared";
 import { appBaseUrl, emailConfigured, sendEmail } from "@/lib/email";
 import { workspaceInviteEmailHtml } from "@/lib/email-templates";
@@ -171,6 +171,29 @@ export async function cancelWorkspaceInvite(workspaceId: string, inviteId: strin
   await db
     .delete(workspaceInvites)
     .where(and(eq(workspaceInvites.id, inviteId), eq(workspaceInvites.workspaceId, workspaceId)));
+  revalidatePath("/projects");
+  return { ok: true as const };
+}
+
+export async function deleteWorkspace(workspaceId: string) {
+  const user = await requireUser();
+  const [membership] = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)))
+    .limit(1);
+  if (!membership || membership.role !== "owner") {
+    return { error: "Only the team owner can delete this team." };
+  }
+  const [workspace] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+  if (!workspace) return { error: "Team not found." };
+
+  await db
+    .update(projects)
+    .set({ deletedAt: new Date(), workspaceId: null })
+    .where(eq(projects.workspaceId, workspaceId));
+  await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
+
   revalidatePath("/projects");
   return { ok: true as const };
 }
